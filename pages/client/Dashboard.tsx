@@ -252,7 +252,7 @@ const Dashboard = () => {
           Atualizar Dados
         </button>
       </div>
-      '{mensagemDjango && (
+      {mensagemDjango && (
         <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
           <strong>Ligação Python:</strong> {mensagemDjango}
         </div>
