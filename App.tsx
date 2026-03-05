@@ -60,6 +60,7 @@ import {
   limit,
   addDoc,
 } from "firebase/firestore";
+import { apiFetch } from "./lib/api";
 
 // Public Pages
 import Landing from "./pages/Landing";
@@ -627,131 +628,35 @@ const App = () => {
             return;
           }
 
-          // --- FIX: Regra Hardcoded para Admin Principal ---
-          // Isso garante que seu email específico sempre seja Admin, mesmo que o banco esteja vazio ou incompleto.
-          if (currentUser.email === "admin@bidflow.com") {
-            console.log("Admin Master detectado. Concedendo acesso...");
-
-            // Verifica se existe na coleção 'team' para consistência, se não, cria.
-            const teamQuery = query(
-              collection(db, "artifacts", appId, "team"),
-              where("email", "==", currentUser.email)
-            );
-            const teamSnap = await getDocs(teamQuery);
-
-            if (teamSnap.empty) {
-              console.log("Criando registro de Admin na coleção team...");
-              await addDoc(collection(db, "artifacts", appId, "team"), {
-                name: currentUser.displayName || "Master Admin",
-                email: currentUser.email,
-                role: "superadmin",
-                permissions: {
-                  finance: true,
-                  support: true,
-                  tech: true,
-                  sales: true,
-                },
-                status: "active",
-                createdAt: new Date().toISOString(),
-              });
-            }
+          // Consulta o backend Django para obter o UserProfile com Role e Permissions
+          try {
+            // O próprio token JWT é enviado e a API sabe quem é o utilizador.
+            const userData = await apiFetch('/users/me/');
 
             setAdminPermissions({
-              superadmin: true,
-              finance: true,
-              support: true,
-              tech: true,
-              sales: true,
+              superadmin: userData.permissions.superadmin,
+              finance: userData.permissions.finance,
+              support: userData.permissions.support,
+              tech: userData.permissions.tech,
+              sales: userData.permissions.sales,
             });
+
             setUserProfile({
-              name: "Master Admin",
-              email: currentUser.email,
-              avatar: `https://ui-avatars.com/api/?name=Master+Admin&background=6C63FF&color=fff`,
+              name: currentUser.displayName || userData.user.first_name || userData.user.email.split("@")[0] || "Usuário",
+              email: userData.user.email,
+              avatar: currentUser.photoURL || `https://ui-avatars.com/api/?name=${userData.user.email}&background=6C63FF&color=fff`,
             });
-            setRole("SUPERADMIN");
-            return;
-          }
-          // --- FIM DO FIX ---
 
-          // 1. Verificar se é membro da equipe (Admin Geral)
-          const teamQuery = query(
-            collection(db, "artifacts", appId, "team"),
-            where("email", "==", currentUser.email)
-          );
-          const teamSnap = await getDocs(teamQuery);
-
-          if (!teamSnap.empty) {
-            const adminData = teamSnap.docs[0].data();
-            setAdminPermissions({
-              superadmin: adminData.role === "superadmin",
-              finance: adminData.permissions?.finance || false,
-              support: adminData.permissions?.support || false,
-              tech: adminData.permissions?.tech || false,
-              sales: adminData.permissions?.sales || false,
-            });
-            setUserProfile({
-              name: adminData.name,
-              email: adminData.email,
-              avatar: `https://ui-avatars.com/api/?name=${adminData.name}&background=6C63FF&color=fff`,
-            });
-            setRole("SUPERADMIN");
-            return;
-          } else {
-            // 2. Fallback: Se a coleção 'team' estiver VAZIA, promove o primeiro usuário a Superadmin
-            const allTeamQuery = query(
-              collection(db, "artifacts", appId, "team"),
-              limit(1)
-            );
-            const allTeamSnap = await getDocs(allTeamQuery);
-
-            if (allTeamSnap.empty) {
-              console.log(
-                "Sistema sem admins. Promovendo primeiro usuário a Superadmin..."
-              );
-              // Cria o primeiro admin automaticamente
-              await addDoc(collection(db, "artifacts", appId, "team"), {
-                name: currentUser.displayName || "Master Admin",
-                email: currentUser.email,
-                role: "superadmin",
-                permissions: {
-                  finance: true,
-                  support: true,
-                  tech: true,
-                  sales: true,
-                },
-                status: "active",
-                createdAt: new Date().toISOString(),
-              });
-
-              setAdminPermissions({
-                superadmin: true,
-                finance: true,
-                support: true,
-                tech: true,
-                sales: true,
-              });
-              setUserProfile({
-                name: currentUser.displayName || "Master Admin",
-                email: currentUser.email,
-                avatar: `https://ui-avatars.com/api/?name=Master+Admin&background=6C63FF&color=fff`,
-              });
+            if (userData.role === "superadmin" || userData.permissions.superadmin) {
               setRole("SUPERADMIN");
-              return;
+            } else {
+              setRole("CLIENT");
             }
+          } catch (apiError) {
+            console.error("Erro ao obter dados do utilizador via API:", apiError);
+            // Caso a API falhe, não conseguimos determinar se é admin. Retornar guest.
+            setRole("GUEST");
           }
-
-          // Se não for admin, é cliente normal
-          setRole("CLIENT");
-          setUserProfile({
-            name:
-              currentUser.displayName ||
-              currentUser.email?.split("@")[0] ||
-              "Usuário",
-            email: currentUser.email,
-            avatar:
-              currentUser.photoURL ||
-              `https://ui-avatars.com/api/?name=${currentUser.email}`,
-          });
         } catch (error) {
           console.error("Erro ao verificar role:", error);
           setRole("GUEST");

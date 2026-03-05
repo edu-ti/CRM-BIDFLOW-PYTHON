@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -23,4 +23,7 @@ def teste_api(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/teste/', teste_api),
+    path('api/crm/', include('crm.urls')),
+    path('api/inventory/', include('inventory.urls')),
+    path('api/users/', include('users.urls')),
 ]

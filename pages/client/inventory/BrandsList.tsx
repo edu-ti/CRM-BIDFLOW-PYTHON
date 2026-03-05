@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 interface Brand {
     id: string;
@@ -15,25 +14,34 @@ const BrandsList = () => {
     const [brands, setBrands] = useState<Brand[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const loadBrands = async () => {
+        try {
+            const data = await apiFetch('/inventory/brands/');
+            setBrands(data.map((b: any) => ({
+                id: b.id,
+                name: b.name,
+                active: true, // Django model doesn't have active right now, assuming true
+                ...b
+            })));
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-
-        const unsubscribe = onSnapshot(
-            collection(db, "artifacts", appId, "users", uid, "inventory_brands"),
-            (snapshot) => {
-                setBrands(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Brand)));
-                setLoading(false);
-            }
-        );
-
-        return () => unsubscribe();
+        loadBrands();
     }, []);
 
     const handleDelete = async (id: string) => {
-        if (!auth.currentUser) return;
         if (confirm('Tem certeza que deseja excluir esta marca?')) {
-            await deleteDoc(doc(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_brands", id));
+            try {
+                await apiFetch(`/inventory/brands/${id}/`, { method: 'DELETE' });
+                await loadBrands();
+            } catch (error) {
+                console.error('Erro ao excluir:', error);
+            }
         }
     };
 
@@ -91,8 +99,8 @@ const BrandsList = () => {
                                         <td className="py-3 px-4 text-gray-800 dark:text-gray-200 font-medium">{b.name}</td>
                                         <td className="py-3 px-4 text-center">
                                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${b.active
-                                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                                 }`}>
                                                 {b.active ? 'Ativa' : 'Inativa'}
                                             </span>

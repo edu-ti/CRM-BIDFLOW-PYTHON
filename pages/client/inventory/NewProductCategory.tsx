@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc, onSnapshot } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 interface Category {
     id: string;
@@ -21,19 +20,28 @@ const NewProductCategory = () => {
     });
 
     useEffect(() => {
-        if (!auth.currentUser) return;
-        const unsubscribe = onSnapshot(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_product_categories"), snap => {
-            setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
-        });
-        return () => unsubscribe();
+        const loadCategories = async () => {
+            try {
+                const data = await apiFetch('/inventory/categories/');
+                setCategories(data.map((c: any) => ({ ...c, id: c.id, name: c.name })));
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        loadCategories();
     }, []);
 
     const handleSave = async () => {
         if (!formData.name) { alert("Nome obrigatório"); return; }
-        if (!auth.currentUser) return;
         setLoading(true);
         try {
-            await addDoc(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_product_categories"), formData);
+            await apiFetch('/inventory/categories/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: formData.name,
+                    description: formData.description
+                })
+            });
             navigate(-1);
         } catch (e) { console.error(e); alert("Erro ao salvar"); }
         finally { setLoading(false); }

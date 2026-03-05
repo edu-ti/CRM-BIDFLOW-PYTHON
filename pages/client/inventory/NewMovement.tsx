@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Plus, Trash2, Calendar, Search, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 const NewMovement = () => {
     const navigate = useNavigate();
@@ -36,20 +35,20 @@ const NewMovement = () => {
     });
 
     useEffect(() => {
-        if (!auth.currentUser) return;
         const fetchData = async () => {
-            const uid = auth.currentUser!.uid;
             try {
-                const [prodSnap, depotSnap, catSnap] = await Promise.all([
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_products")),
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_depots")),
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_movement_categories"))
+                const [prodData, depotData] = await Promise.all([
+                    apiFetch('/inventory/products/'),
+                    apiFetch('/inventory/depots/')
                 ]);
-                setProducts(prodSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setDepots(depotSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-            } catch (e) { console.error(e); }
-            finally { setInitialLoading(false); }
+                setProducts(prodData);
+                setDepots(depotData);
+                setCategories([]); // Mocked since no endpoint
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setInitialLoading(false);
+            }
         };
         fetchData();
     }, []);
@@ -86,26 +85,25 @@ const NewMovement = () => {
 
     const handleSave = async () => {
         if (!header.depotId || items.length === 0) { alert("Preencha depósito e adicione itens"); return; }
-        if (!auth.currentUser) return;
-
         setLoading(true);
         try {
-            const totalValue = items.reduce((acc, curr) => acc + curr.total, 0);
+            // Django API expects individual StockMovement records per item, or a bulk endpoint.
+            // Our Phase 3 simple API has StockMovement for one product.
+            // We will save one StockMovement per item in the cart.
+            const movementType = header.type === 'Entrada' ? 'IN' : 'OUT';
 
-            // 1. Save Movement Record
-            await addDoc(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_movements"), {
-                ...header,
-                items,
-                totalValue,
-                createdAt: new Date().toISOString()
-            });
-
-            // 2. Update Stock (Sequential)
             for (const item of items) {
-                const prodRef = doc(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_products", item.productId);
-                const change = header.type === 'Entrada' ? item.quantity : -item.quantity;
-                await updateDoc(prodRef, {
-                    quantity: increment(change)
+                await apiFetch('/inventory/movements/', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        product: item.productId,
+                        depot: header.depotId,
+                        type: movementType,
+                        quantity: item.quantity,
+                        date: header.date,
+                        reference_document: header.document || '',
+                        notes: header.observation || ''
+                    })
                 });
             }
 

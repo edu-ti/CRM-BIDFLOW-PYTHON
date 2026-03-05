@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 const NewDepot = () => {
     const navigate = useNavigate();
@@ -27,10 +26,16 @@ const NewDepot = () => {
 
     const handleSave = async () => {
         if (!formData.name) { alert("Nome obrigatório"); return; }
-        if (!auth.currentUser) return;
         setLoading(true);
         try {
-            await addDoc(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_depots"), formData);
+            const loc = `${formData.address.street}, ${formData.address.number} - ${formData.address.neighborhood}, ${formData.address.city} - ${formData.address.cep}`;
+            await apiFetch('/inventory/depots/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: formData.name,
+                    location: loc
+                })
+            });
             navigate(-1);
         } catch (e) { console.error(e); alert("Erro ao salvar"); }
         finally { setLoading(false); }

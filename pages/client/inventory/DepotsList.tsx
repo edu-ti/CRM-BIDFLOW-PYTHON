@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Trash2, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 interface Depot {
     id: string;
@@ -23,19 +22,37 @@ const DepotsList = () => {
     const [depots, setDepots] = useState<Depot[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-        const unsubscribe = onSnapshot(collection(db, "artifacts", appId, "users", uid, "inventory_depots"), snap => {
-            setDepots(snap.docs.map(d => ({ id: d.id, ...d.data() } as Depot)));
+    const loadDepots = async () => {
+        try {
+            const data = await apiFetch('/inventory/depots/');
+            setDepots(data.map((d: any) => ({
+                id: d.id,
+                name: d.name,
+                type: 'Físico', // Mocking since Django model only has user, name, location
+                address: { street: d.location || '' },
+                active: true,
+                ...d
+            })));
+        } catch (error) {
+            console.error(error);
+        } finally {
             setLoading(false);
-        });
-        return () => unsubscribe();
+        }
+    };
+
+    useEffect(() => {
+        loadDepots();
     }, []);
 
     const handleDelete = async (id: string) => {
-        if (!auth.currentUser) return;
-        if (confirm("Excluir?")) await deleteDoc(doc(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_depots", id));
+        if (confirm("Excluir?")) {
+            try {
+                await apiFetch(`/inventory/depots/${id}/`, { method: 'DELETE' });
+                await loadDepots();
+            } catch (error) {
+                console.error(error);
+            }
+        }
     };
 
     const filtered = depots.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -100,8 +117,8 @@ const DepotsList = () => {
                                     </td>
                                     <td className="py-3 px-4 text-center">
                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${d.active
-                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                             }`}>
                                             {d.active ? 'Ativo' : 'Inativo'}
                                         </span>

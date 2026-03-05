@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, Eye, ArrowUpRight, ArrowDownLeft, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore'; // Added orderBy
+import { apiFetch } from '../../../lib/api';
 
 interface Movement {
     id: string;
@@ -20,18 +19,29 @@ const MovementsList = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-        // Simple query, ordering might need composite index. If it fails, remove orderBy
-        // const q = query(collection(db, "artifacts", appId, "users", uid, "inventory_movements"), orderBy('date', 'desc'), limit(50));
-        // For safety against missing indexes, just fetching all and sorting client side for this demo
-        const unsubscribe = onSnapshot(collection(db, "artifacts", appId, "users", uid, "inventory_movements"), snap => {
-            const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Movement));
-            data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            setMovements(data);
-            setLoading(false);
-        });
-        return () => unsubscribe();
+        const loadMovements = async () => {
+            try {
+                const data = await apiFetch('/inventory/movements/');
+                // Mapping Django model fields to UI model
+                const mappedData = data.map((m: any) => ({
+                    id: m.id,
+                    type: m.type === 'IN' ? 'Entrada' : m.type === 'OUT' ? 'Saída' : 'Transferência',
+                    date: m.date,
+                    categoryName: 'Geral', // Not in simple schema
+                    entity: m.reference_document || '-',
+                    totalValue: 0, // In real schema, join with price or extend model
+                    depotName: `Depósito ${m.depot}`, // We need the depot name, but API currently returns ID
+                    ...m
+                }));
+                mappedData.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                setMovements(mappedData);
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadMovements();
     }, []);
 
     return (

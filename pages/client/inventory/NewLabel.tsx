@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+// Not using firebase anymore. Label model not present in Phase 3 backend, so we will mock.
 
 const NewLabel = () => {
     const navigate = useNavigate();
@@ -18,11 +17,12 @@ const NewLabel = () => {
             alert("Nome é obrigatório");
             return;
         }
-        if (!auth.currentUser) return;
         setLoading(true);
 
         try {
-            await addDoc(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_labels"), formData);
+            // Mocking API call for Label as it wasn't implemented in Phase 3 backend
+            await new Promise(resolve => setTimeout(resolve, 500));
+            console.log("Mock saved label", formData);
             navigate(-1);
         } catch (error) {
             console.error("Error saving label:", error);

@@ -39,6 +39,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'crm', # Nossa nova app para gerir os dados do CRM
+    'inventory',
+    'users',
 ]
 
 MIDDLEWARE = [

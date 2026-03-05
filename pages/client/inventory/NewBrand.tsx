@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 const NewBrand = () => {
     const navigate = useNavigate();
@@ -18,12 +17,16 @@ const NewBrand = () => {
             alert('Nome da marca é obrigatório');
             return;
         }
-
-        if (!auth.currentUser) return;
         setLoading(true);
 
         try {
-            await addDoc(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_brands"), formData);
+            await apiFetch('/inventory/brands/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: formData.name,
+                    description: formData.site // mapping site to description temporarily
+                })
+            });
             navigate(-1);
         } catch (error) {
             console.error("Error saving brand:", error);

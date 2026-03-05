@@ -18,9 +18,8 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { db, auth, appId } from "../../lib/firebase";
-import { collection, query, getDocs, where, orderBy } from "firebase/firestore";
-
+import { auth } from "../../lib/firebase";
+import { apiFetch } from "../../lib/api";
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -108,56 +107,26 @@ const Dashboard = () => {
         const startOfLast7Days = new Date();
         startOfLast7Days.setDate(now.getDate() - 7);
 
-        // 1. Buscar Contatos (Leads)
-        const contactsRef = collection(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          uid,
-          "contacts"
-        );
-        const contactsSnap = await getDocs(contactsRef);
-        const contacts = contactsSnap.docs.map((doc) => ({
-          ...doc.data(),
-          createdAt: doc.data().createdAt,
-        }));
+        // 1. Buscar Contatos (Leads) via Django
+        const contacts = await apiFetch('/crm/contacts/');
 
-        // Filtrar leads deste mês
+        // Filtrar leads deste mês (Django model usa created_at)
         const newLeads = contacts.filter(
-          (c: any) => new Date(c.createdAt) >= startOfMonth
+          (c: any) => new Date(c.created_at) >= startOfMonth
         ).length;
 
-        // 2. Buscar Negócios (Vendas)
-        const dealsRef = collection(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          uid,
-          "deals"
-        );
-        const dealsSnap = await getDocs(dealsRef);
-        const deals = dealsSnap.docs.map((doc) => doc.data());
+        // 2. Buscar Negócios (Vendas) via Django
+        const deals = await apiFetch('/crm/deals/');
 
-        // Filtrar vendas ganhas (stageId 's4' do Funnel.tsx é "Fechado")
-        const wonDeals = deals.filter((d: any) => d.stageId === "s4");
+        // Filtrar vendas ganhas (stage_id 's4' do Funnel.tsx é "Fechado")
+        const wonDeals = deals.filter((d: any) => d.stage_id === "s4");
         const totalRevenue = wonDeals.reduce(
           (acc: number, curr: any) => acc + (Number(curr.value) || 0),
           0
         );
 
-        // 3. Buscar Conversas (Proxy para Mensagens e Taxa)
-        const conversationsRef = collection(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          uid,
-          "conversations"
-        );
-        const conversationsSnap = await getDocs(conversationsRef);
-        const conversations = conversationsSnap.docs.map((doc) => doc.data());
+        // 3. Buscar Conversas (A ser migrado na Fase 3 - Mock para não quebrar UI)
+        const conversations: any[] = [];
 
         // Simulação de volume de mensagens baseada em conversas ativas (para evitar leitura excessiva de subcoleções)
         // Em produção, você usaria um contador incrementado via Cloud Functions
@@ -193,7 +162,7 @@ const Dashboard = () => {
 
         // Preencher Leads
         contacts.forEach((c: any) => {
-          const date = new Date(c.createdAt);
+          const date = new Date(c.created_at);
           if (date >= startOfLast7Days) {
             const dayName = date.toLocaleDateString("pt-BR", {
               weekday: "short",
@@ -205,9 +174,9 @@ const Dashboard = () => {
 
         // Preencher Vendas
         deals.forEach((d: any) => {
-          if (d.stageId === "s4") {
+          if (d.stage_id === "s4") {
             // Apenas vendas fechadas
-            const date = new Date(d.createdAt || new Date()); // Fallback se não tiver data
+            const date = new Date(d.created_at || new Date()); // Fallback se não tiver data
             if (date >= startOfLast7Days) {
               const dayName = date.toLocaleDateString("pt-BR", {
                 weekday: "short",

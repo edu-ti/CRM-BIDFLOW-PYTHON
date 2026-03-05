@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 interface Size {
     id: string;
@@ -15,25 +14,34 @@ const SizesList = () => {
     const [sizes, setSizes] = useState<Size[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const loadSizes = async () => {
+        try {
+            const data = await apiFetch('/inventory/sizes/');
+            setSizes(data.map((s: any) => ({
+                id: s.id,
+                name: s.name,
+                description: '',
+                ...s
+            })));
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-
-        const unsubscribe = onSnapshot(
-            collection(db, "artifacts", appId, "users", uid, "inventory_sizes"),
-            (snapshot) => {
-                setSizes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Size)));
-                setLoading(false);
-            }
-        );
-
-        return () => unsubscribe();
+        loadSizes();
     }, []);
 
     const handleDelete = async (id: string) => {
-        if (!auth.currentUser) return;
         if (confirm('Tem certeza que deseja excluir este tamanho?')) {
-            await deleteDoc(doc(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_sizes", id));
+            try {
+                await apiFetch(`/inventory/sizes/${id}/`, { method: 'DELETE' });
+                await loadSizes();
+            } catch (error) {
+                console.error('Error deleting size', error);
+            }
         }
     };
 

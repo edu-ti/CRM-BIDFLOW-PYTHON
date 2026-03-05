@@ -12,10 +12,10 @@ import {
 } from "lucide-react";
 import { Deal, FunnelStage } from "../../types";
 import { db, auth, appId } from "../../lib/firebase";
+import { apiFetch } from "../../lib/api";
 import {
   collection,
   addDoc,
-  updateDoc,
   deleteDoc,
   doc,
   onSnapshot,
@@ -114,24 +114,30 @@ const Funnel = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Carregar Negócios (Deals)
-  useEffect(() => {
+  // 2. Carregar Negócios (Deals) do Django
+  const loadDeals = async () => {
     if (!auth.currentUser) return;
-
-    const q = query(
-      collection(db, "artifacts", appId, "users", auth.currentUser.uid, "deals")
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedDeals = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Deal[];
-      setDeals(fetchedDeals);
+    try {
+      const allDeals = await apiFetch('/crm/deals/');
+      const mappedDeals = allDeals.map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        value: Number(d.value),
+        contactName: d.contact_name || '',
+        stageId: d.stage_id || '',
+        createdAt: d.created_at,
+      }));
+      setDeals(mappedDeals);
+    } catch (error) {
+      console.error("Erro ao carregar deals do Django", error);
+    } finally {
       setIsLoading(false);
-    });
+    }
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    loadDeals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDragStart = (e: React.DragEvent, dealId: string) => {
@@ -153,18 +159,13 @@ const Funnel = () => {
     );
 
     try {
-      const dealDoc = doc(
-        db,
-        "artifacts",
-        appId,
-        "users",
-        auth.currentUser.uid,
-        "deals",
-        dealId
-      );
-      await updateDoc(dealDoc, { stageId });
+      await apiFetch(`/crm/deals/${dealId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ stage_id: stageId })
+      });
     } catch (error) {
       console.error("Failed to move deal:", error);
+      await loadDeals(); // revert on fail
     }
   };
 
@@ -180,25 +181,19 @@ const Funnel = () => {
       return;
 
     try {
-      await addDoc(
-        collection(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          auth.currentUser.uid,
-          "deals"
-        ),
-        {
+      await apiFetch('/crm/deals/', {
+        method: 'POST',
+        body: JSON.stringify({
           title: newDeal.title,
           value: Number(newDeal.value),
-          contactName: newDeal.contactName,
-          stageId: stages[0].id, // Primeiro estágio por padrão
-          createdAt: new Date().toISOString(),
-        }
-      );
+          contact_name: newDeal.contactName,
+          stage_id: stages[0].id,
+          contact: null
+        })
+      });
       setIsModalOpen(false);
       setNewDeal({ title: "", value: "", contactName: "" });
+      await loadDeals();
     } catch (error) {
       console.error("Error creating deal:", error);
     }
@@ -215,17 +210,8 @@ const Funnel = () => {
       showCancel: true,
       onConfirm: async () => {
         try {
-          await deleteDoc(
-            doc(
-              db,
-              "artifacts",
-              appId,
-              "users",
-              auth.currentUser!.uid,
-              "deals",
-              id
-            )
-          );
+          await apiFetch(`/crm/deals/${id}/`, { method: 'DELETE' });
+          await loadDeals();
         } catch (e) {
           console.error("Error deleting deal:", e);
         }
@@ -295,22 +281,10 @@ const Funnel = () => {
             )
           );
 
-          // Excluir (ou mover) os negócios da etapa - aqui optamos por excluir para simplificar,
-          // mas em produção poderia mover para a primeira coluna ou arquivar.
-          const batch = writeBatch(db);
-          dealsInStage.forEach((d) => {
-            const dealRef = doc(
-              db,
-              "artifacts",
-              appId,
-              "users",
-              auth.currentUser!.uid,
-              "deals",
-              d.id
-            );
-            batch.delete(dealRef);
-          });
-          await batch.commit();
+          await Promise.all(
+            dealsInStage.map(d => apiFetch(`/crm/deals/${d.id}/`, { method: 'DELETE' }))
+          );
+          await loadDeals();
 
           setActiveStageMenu(null);
         } catch (e) {
@@ -591,13 +565,11 @@ const Funnel = () => {
                     <button
                       key={color.class}
                       onClick={() => setNewStageColor(color.class)}
-                      className={`w-8 h-8 rounded-full ${
-                        color.class
-                      } transition-transform hover:scale-110 ${
-                        newStageColor === color.class
+                      className={`w-8 h-8 rounded-full ${color.class
+                        } transition-transform hover:scale-110 ${newStageColor === color.class
                           ? "ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-gray-800 scale-110"
                           : ""
-                      }`}
+                        }`}
                       title={color.name}
                     />
                   ))}

@@ -19,17 +19,8 @@ import {
   AlertCircle,
   Download,
 } from "lucide-react";
-import { db, auth, appId } from "../../lib/firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore";
+import { auth } from "../../lib/firebase";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 // --- Interfaces ---
@@ -104,44 +95,50 @@ const Contacts = () => {
   >({});
   const [importFile, setImportFile] = useState<File | null>(null);
 
-  // Fetch Data
-  useEffect(() => {
+  // Fetch Data a partir do Django
+  const loadData = async () => {
     if (!auth.currentUser) return;
-    const uid = auth.currentUser.uid;
+    try {
+      const allContacts = await apiFetch('/crm/contacts/');
 
-    const unsubOrg = onSnapshot(
-      collection(db, "artifacts", appId, "users", uid, "organizations"),
-      (snap) => {
-        setOrganizations(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as Organization))
-        );
-      }
-    );
+      const orgs = allContacts.filter((c: any) => c.custom_fields?.type === 'organization').map((c: any) => ({
+        id: c.id,
+        fantasyName: c.name, // Utilizamos o "name" do Contact genérico como fantasyName
+        address: c.address || '',
+        ...c.custom_fields
+      }));
 
-    const unsubContact = onSnapshot(
-      collection(db, "artifacts", appId, "users", uid, "contacts"),
-      (snap) => {
-        setContacts(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as ContactPerson))
-        );
-      }
-    );
+      const conts = allContacts.filter((c: any) => c.custom_fields?.type === 'contact_person').map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email || '',
+        phone: c.phone !== 'N/A' ? c.phone : '',
+        ...c.custom_fields
+      }));
 
-    const unsubInd = onSnapshot(
-      collection(db, "artifacts", appId, "users", uid, "individuals"),
-      (snap) => {
-        setIndividuals(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as IndividualClient))
-        );
-        setIsLoading(false);
-      }
-    );
+      const inds = allContacts.filter((c: any) => c.custom_fields?.type === 'individual').map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email || '',
+        phone: c.phone !== 'N/A' ? c.phone : '',
+        address: c.address || '',
+        ...c.custom_fields
+      }));
 
-    return () => {
-      unsubOrg();
-      unsubContact();
-      unsubInd();
-    };
+      setOrganizations(orgs);
+      setContacts(conts);
+      setIndividuals(inds);
+    } catch (err) {
+      console.error("Erro ao buscar dados do Django:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Invocamos no onload e também podemos usar o onAuthStateChanged no App se a auth não tiver carregado rápido
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- API Helpers ---
@@ -254,102 +251,137 @@ const Contacts = () => {
   // --- Save Handlers ---
 
   const handleSaveOrg = async () => {
-    if (!auth.currentUser) return;
-    if (!orgForm.socialReason) {
-      alert("Razão Social é obrigatória.");
+    if (!orgForm.socialReason && !orgForm.fantasyName) {
+      alert("Razão Social ou Nome Fantasia é obrigatório.");
       return;
     }
+    setIsLoadingAPI(true);
+    try {
+      const payload = {
+        name: orgForm.fantasyName || orgForm.socialReason || 'Empresa Sem Nome',
+        phone: 'N/A', // O model Django exige phone.
+        email: null,
+        address: orgForm.address || null,
+        custom_fields: {
+          type: 'organization',
+          cnpj: orgForm.cnpj || '',
+          socialReason: orgForm.socialReason || '',
+          cep: orgForm.cep || '',
+          number: orgForm.number || '',
+          complement: orgForm.complement || '',
+          neighborhood: orgForm.neighborhood || '',
+          city: orgForm.city || '',
+          state: orgForm.state || ''
+        }
+      };
 
-    const collectionRef = collection(
-      db,
-      "artifacts",
-      appId,
-      "users",
-      auth.currentUser.uid,
-      "organizations"
-    );
-
-    if (editingId) {
-      await updateDoc(doc(collectionRef, editingId), orgForm);
-    } else {
-      await addDoc(collectionRef, orgForm);
+      if (editingId) {
+        await apiFetch(`/crm/contacts/${editingId}/`, { method: 'PUT', body: JSON.stringify(payload) });
+      } else {
+        await apiFetch('/crm/contacts/', { method: 'POST', body: JSON.stringify(payload) });
+      }
+      setIsOrgModalOpen(false);
+      setOrgForm({});
+      setEditingId(null);
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar organização.");
+    } finally {
+      setIsLoadingAPI(false);
     }
-
-    setIsOrgModalOpen(false);
-    setOrgForm({});
-    setEditingId(null);
   };
 
   const handleSaveContact = async () => {
-    if (!auth.currentUser) return;
-
-    const org = organizations.find((o) => o.id === contactForm.organizationId);
-    const dataToSave = {
-      ...contactForm,
-      organizationName: org?.fantasyName || org?.socialReason || "N/A",
-    };
-
-    const collectionRef = collection(
-      db,
-      "artifacts",
-      appId,
-      "users",
-      auth.currentUser.uid,
-      "contacts"
-    );
-
-    if (editingId) {
-      await updateDoc(doc(collectionRef, editingId), dataToSave);
-    } else {
-      await addDoc(collectionRef, dataToSave);
+    if (!contactForm.name) {
+      alert("Nome é obrigatório.");
+      return;
     }
+    setIsLoadingAPI(true);
+    try {
+      const org = organizations.find((o) => o.id === contactForm.organizationId);
+      const payload = {
+        name: contactForm.name,
+        phone: contactForm.phone || 'N/A',
+        email: contactForm.email || null,
+        custom_fields: {
+          type: 'contact_person',
+          organizationId: contactForm.organizationId || null,
+          organizationName: org?.fantasyName || org?.socialReason || "N/A",
+          role: contactForm.role || '',
+          sector: contactForm.sector || ''
+        }
+      };
 
-    setIsContactModalOpen(false);
-    setContactForm({});
-    setEditingId(null);
+      if (editingId) {
+        await apiFetch(`/crm/contacts/${editingId}/`, { method: 'PUT', body: JSON.stringify(payload) });
+      } else {
+        await apiFetch('/crm/contacts/', { method: 'POST', body: JSON.stringify(payload) });
+      }
+      setIsContactModalOpen(false);
+      setContactForm({});
+      setEditingId(null);
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar contato.");
+    } finally {
+      setIsLoadingAPI(false);
+    }
   };
 
   const handleSaveIndividual = async () => {
-    if (!auth.currentUser) return;
     if (!individualForm.name) {
       alert("Nome é obrigatório.");
       return;
     }
+    setIsLoadingAPI(true);
+    try {
+      const payload = {
+        name: individualForm.name,
+        phone: individualForm.phone || 'N/A',
+        email: individualForm.email || null,
+        address: individualForm.address || null,
+        custom_fields: {
+          type: 'individual',
+          cpf: individualForm.cpf || '',
+          birthDate: individualForm.birthDate || '',
+          cep: individualForm.cep || '',
+          number: individualForm.number || '',
+          complement: individualForm.complement || '',
+          neighborhood: individualForm.neighborhood || '',
+          city: individualForm.city || '',
+          state: individualForm.state || ''
+        }
+      };
 
-    const collectionRef = collection(
-      db,
-      "artifacts",
-      appId,
-      "users",
-      auth.currentUser.uid,
-      "individuals"
-    );
-
-    if (editingId) {
-      await updateDoc(doc(collectionRef, editingId), individualForm);
-    } else {
-      await addDoc(collectionRef, individualForm);
+      if (editingId) {
+        await apiFetch(`/crm/contacts/${editingId}/`, { method: 'PUT', body: JSON.stringify(payload) });
+      } else {
+        await apiFetch('/crm/contacts/', { method: 'POST', body: JSON.stringify(payload) });
+      }
+      setIsIndividualModalOpen(false);
+      setIndividualForm({});
+      setEditingId(null);
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar cliente PF.");
+    } finally {
+      setIsLoadingAPI(false);
     }
-
-    setIsIndividualModalOpen(false);
-    setIndividualForm({});
-    setEditingId(null);
   };
 
   const handleDelete = async (collectionName: string, id: string) => {
-    if (!auth.currentUser) return;
-    if (confirm("Tem certeza?")) {
-      await deleteDoc(
-        doc(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          auth.currentUser.uid,
-          collectionName,
-          id
-        )
-      );
+    // collectionName não é essencial para o DELETE na API pois a rota é genérica de contacts, mas é passado.
+    if (confirm("Tem certeza que deseja apagar este registo?")) {
+      try {
+        await apiFetch(`/crm/contacts/${id}/`, { method: 'DELETE' });
+        await loadData();
+      } catch (e) {
+        console.error(e);
+        alert("Erro ao excluir contato.");
+      }
     }
   };
 
@@ -378,9 +410,9 @@ const Contacts = () => {
   const normalizeText = (text: string) => {
     return text
       ? text
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
       : "";
   };
 
@@ -476,11 +508,10 @@ const Contacts = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === tab.id
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.id
                   ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
                   : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-              }`}
+                }`}
             >
               {tab.label}
             </button>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Trash2, X, Save, Loader2 } from 'lucide-react';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 interface Unit {
     id: string;
@@ -19,34 +18,41 @@ const UnitsList = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Unit>>({});
 
+    const loadUnits = async () => {
+        try {
+            const data = await apiFetch('/inventory/units/');
+            setUnits(data.map((u: any) => ({
+                id: u.id,
+                name: u.name,
+                acro: '',
+                active: true,
+                ...u
+            })));
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-
-        const unsubscribe = onSnapshot(
-            collection(db, "artifacts", appId, "users", uid, "inventory_units"),
-            (snapshot) => {
-                setUnits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Unit)));
-                setLoading(false);
-            }
-        );
-
-        return () => unsubscribe();
+        loadUnits();
     }, []);
 
     const handleSave = async () => {
-        if (!auth.currentUser || !editForm.name || !editForm.acro) return;
+        if (!editForm.name) return;
         setLoading(true);
 
         try {
-            const collectionRef = collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_units");
+            const payload = { name: editForm.name }; // ignoring acro because Model only has name
             if (editForm.id) {
-                await updateDoc(doc(collectionRef, editForm.id), editForm);
+                await apiFetch(`/inventory/units/${editForm.id}/`, { method: 'PUT', body: JSON.stringify(payload) });
             } else {
-                await addDoc(collectionRef, { ...editForm, active: true });
+                await apiFetch('/inventory/units/', { method: 'POST', body: JSON.stringify(payload) });
             }
             setIsEditing(false);
             setEditForm({});
+            await loadUnits();
         } catch (error) {
             console.error("Error saving unit", error);
         } finally {
@@ -55,9 +61,13 @@ const UnitsList = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!auth.currentUser) return;
         if (confirm('Tem certeza que deseja excluir?')) {
-            await deleteDoc(doc(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_units", id));
+            try {
+                await apiFetch(`/inventory/units/${id}/`, { method: 'DELETE' });
+                await loadUnits();
+            } catch (error) {
+                console.error('Error deleting unit', error);
+            }
         }
     };
 
@@ -157,8 +167,8 @@ const UnitsList = () => {
                                         <td className="py-3 px-4 text-gray-600 dark:text-gray-300">{u.acro}</td>
                                         <td className="py-3 px-4 text-center">
                                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${u.active
-                                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                                                 }`}>
                                                 {u.active ? 'Ativa' : 'Inativa'}
                                             </span>

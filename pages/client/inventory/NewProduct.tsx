@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Upload, Plus, X, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 const NewProduct = () => {
     const navigate = useNavigate();
@@ -51,26 +50,21 @@ const NewProduct = () => {
     });
 
     useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-
         const fetchData = async () => {
             try {
-                const [brandsSnap, catsSnap, statsSnap, unitsSnap, sizesSnap, labelsSnap] = await Promise.all([
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_brands")),
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_product_categories")),
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_product_status")),
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_units")),
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_sizes")),
-                    getDocs(collection(db, "artifacts", appId, "users", uid, "inventory_labels")),
+                const [brandsData, catsData, unitsData, sizesData] = await Promise.all([
+                    apiFetch('/inventory/brands/'),
+                    apiFetch('/inventory/categories/'),
+                    apiFetch('/inventory/units/'),
+                    apiFetch('/inventory/sizes/'),
                 ]);
 
-                setBrands(brandsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setCategories(catsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setStatuses(statsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setUnits(unitsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setSizes(sizesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-                setLabels(labelsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+                setBrands(brandsData);
+                setCategories(catsData);
+                setStatuses([{ id: '1', name: 'Ativo' }, { id: '2', name: 'Inativo' }]);
+                setUnits(unitsData);
+                setSizes(sizesData);
+                setLabels([]);
 
             } catch (error) {
                 console.error("Error fetching dependencies:", error);
@@ -92,22 +86,57 @@ const NewProduct = () => {
 
     const handleSave = async () => {
         if (!formData.name) { alert("Nome é obrigatório"); return; }
-        if (!auth.currentUser) return;
         setLoading(true);
 
         try {
-            // Enforce status name saving for easier list display
-            const statusObj = statuses.find(s => s.id === formData.statusId);
-            const productData = {
-                ...formData,
-                onHandQty: formData.quantity,
-                reservedQty: 0,
-                quantity: formData.quantity, // Legacy
-                status: statusObj ? statusObj.name : 'Indefinido',
-                createdAt: new Date().toISOString()
+            // 1. Create Product
+            const productPayload = {
+                name: formData.name,
+                sku: formData.sku,
+                category: formData.categoryId || null,
+                brand: formData.brandId || null,
+                unit: formData.unitId || null,
+                size: formData.sizeId || null,
+                min_stock: formData.minStock || 0,
+                max_stock: formData.maxStock || 0,
+                notes: formData.description
             };
 
-            await addDoc(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_products"), productData);
+            const newProduct = await apiFetch('/inventory/products/', {
+                method: 'POST',
+                body: JSON.stringify(productPayload)
+            });
+
+            // 2. Create Price Table
+            if (formData.costPrice > 0 || formData.salePrice > 0) {
+                await apiFetch('/inventory/pricing/', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        product: newProduct.id,
+                        cost_price: formData.costPrice,
+                        selling_price: formData.salePrice
+                    })
+                });
+            }
+
+            // 3. Create Initial Stock Movement
+            if (formData.quantity > 0) {
+                // We need a default depot. Just fetch the first one or ignore if none.
+                const depots = await apiFetch('/inventory/depots/');
+                if (depots && depots.length > 0) {
+                    await apiFetch('/inventory/movements/', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            product: newProduct.id,
+                            depot: depots[0].id,
+                            type: 'IN',
+                            quantity: formData.quantity,
+                            notes: 'Estoque Inicial'
+                        })
+                    });
+                }
+            }
+
             navigate(-1);
         } catch (e) {
             console.error(e);

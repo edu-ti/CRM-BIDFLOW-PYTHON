@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Trash2, FolderTree, Folder } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 interface Category {
     id: string;
@@ -16,19 +15,36 @@ const ProductCategories = () => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-        const unsubscribe = onSnapshot(collection(db, "artifacts", appId, "users", uid, "inventory_product_categories"), snap => {
-            setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+    const loadCategories = async () => {
+        try {
+            const data = await apiFetch('/inventory/categories/');
+            setCategories(data.map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                code: c.id.substring(0, 8), // Django uuid
+                parent: '', // Mocking since it's not in the simple schema
+                ...c
+            })));
+        } catch (error) {
+            console.error(error);
+        } finally {
             setLoading(false);
-        });
-        return () => unsubscribe();
+        }
+    };
+
+    useEffect(() => {
+        loadCategories();
     }, []);
 
     const handleDelete = async (id: string) => {
-        if (!auth.currentUser) return;
-        if (confirm("Excluir?")) await deleteDoc(doc(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_product_categories", id));
+        if (confirm("Tem certeza que deseja excluir?")) {
+            try {
+                await apiFetch(`/inventory/categories/${id}/`, { method: 'DELETE' });
+                await loadCategories();
+            } catch (error) {
+                console.error(error);
+            }
+        }
     };
 
 

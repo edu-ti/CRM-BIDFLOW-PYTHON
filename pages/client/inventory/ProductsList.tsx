@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, Eye, Edit2, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 interface Product {
     id: string;
@@ -21,19 +20,43 @@ const ProductsList = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (!auth.currentUser) return;
-        const uid = auth.currentUser.uid;
-        const unsubscribe = onSnapshot(collection(db, "artifacts", appId, "users", uid, "inventory_products"), snap => {
-            setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
+    const loadProducts = async () => {
+        try {
+            const data = await apiFetch('/inventory/products/');
+            // In a real scenario we'd aggregate stock and prices from Django APIs.
+            // For now, mapping basic product data.
+            setProducts(data.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                sku: p.sku || '',
+                quantity: 0, // Should be fetched from movements
+                onHandQty: 0,
+                reservedQty: 0,
+                costPrice: 0, // Should be fetched from pricing
+                salePrice: 0,
+                status: 'Ativo',
+                ...p
+            })));
+        } catch (error) {
+            console.error(error);
+        } finally {
             setLoading(false);
-        });
-        return () => unsubscribe();
+        }
+    };
+
+    useEffect(() => {
+        loadProducts();
     }, []);
 
     const handleDelete = async (id: string) => {
-        if (!auth.currentUser) return;
-        if (confirm("Excluir produto?")) await deleteDoc(doc(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_products", id));
+        if (confirm("Excluir produto?")) {
+            try {
+                await apiFetch(`/inventory/products/${id}/`, { method: 'DELETE' });
+                await loadProducts();
+            } catch (error) {
+                console.error(error);
+            }
+        }
     };
 
 

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { db, auth, appId } from '../../../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { apiFetch } from '../../../lib/api';
 
 const NewSize = () => {
     const navigate = useNavigate();
@@ -17,12 +16,15 @@ const NewSize = () => {
             alert("Nome é obrigatório");
             return;
         }
-
-        if (!auth.currentUser) return;
         setLoading(true);
 
         try {
-            await addDoc(collection(db, "artifacts", appId, "users", auth.currentUser.uid, "inventory_sizes"), formData);
+            await apiFetch('/inventory/sizes/', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: formData.name
+                })
+            });
             navigate(-1);
         } catch (error) {
             console.error("Error saving size:", error);
