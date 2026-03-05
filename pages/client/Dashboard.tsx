@@ -21,6 +21,7 @@ import {
 import { db, auth, appId } from "../../lib/firebase";
 import { collection, query, getDocs, where, orderBy } from "firebase/firestore";
 
+
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -31,6 +32,57 @@ const Dashboard = () => {
     revenue: 0,
     responseRate: 0,
   });
+  // Adicione este estado:
+  const [mensagemDjango, setMensagemDjango] = useState<string>('');
+
+  // Adicione este useEffect logo abaixo dos outros:
+  useEffect(() => {
+    const fetchDjango = async () => {
+      // Verifica se existe um utilizador logado no Firebase
+      if (!auth.currentUser) {
+        setMensagemDjango('Utilizador não autenticado no Firebase.');
+        return;
+      }
+      try {
+        // Obtém o token atualizado do Firebase (obrigatório para enviar para Django)
+        const token = await auth.currentUser.getIdToken(true); // forceRefresh
+        console.log("Token gerado pelo Firebase no React:", token ? token.substring(0, 20) + "..." : "VAZIO");
+
+        const res = await fetch('http://localhost:8000/api/teste/', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Devolve a mensagem do Django (que inclui os dados de utilizador logado)
+          setMensagemDjango(`${data.mensagem} Logado como: ${data.email || data.user_id}`);
+        } else if (res.status === 401 || res.status === 403) {
+          setMensagemDjango('Acesso Negado: Token inválido ou expirado.');
+        } else {
+          setMensagemDjango(`Erro: Ocorreu um problema no servidor (${res.status}).`);
+        }
+      } catch (err) {
+        console.error("Erro ao contactar Django:", err);
+        setMensagemDjango('Erro de conexão ao servidor Django.');
+      }
+    };
+
+    // Podemos invocar após o currentUser estar disponível
+    // Caso auth.currentUser seja nulo ao carregar rápido, deve ser tratado com onAuthStateChanged
+    // no App.tsx ou adicionado aqui, mas sendo uma verificação inicial:
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchDjango();
+      } else {
+        setMensagemDjango('A aguardar login...');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
   const [chartData, setChartData] = useState<any[]>([]);
 
   // Helpers de data
@@ -200,7 +252,11 @@ const Dashboard = () => {
           Atualizar Dados
         </button>
       </div>
-
+      '{mensagemDjango && (
+        <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+          <strong>Ligação Python:</strong> {mensagemDjango}
+        </div>
+      )}
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard

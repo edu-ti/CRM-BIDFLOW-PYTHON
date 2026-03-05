@@ -120,7 +120,39 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # Permite que o seu React comunique com o Django
+CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:58306",
 ]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+import os
+import firebase_admin
+from firebase_admin import credentials
+
+# Caminho para o ficheiro JSON que descarregou
+FIREBASE_KEY_PATH = os.path.join(BASE_DIR, 'firebase-key.json')
+
+# Inicializa o Firebase Admin
+if not firebase_admin._apps:
+    try:
+        cred = credentials.Certificate(FIREBASE_KEY_PATH)
+        firebase_admin.initialize_app(cred)
+    except FileNotFoundError:
+        print(f"AVISO: Ficheiro {FIREBASE_KEY_PATH} não encontrado. Firebase não foi inicializado.")
