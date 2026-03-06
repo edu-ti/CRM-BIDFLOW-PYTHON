@@ -8,24 +8,14 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import { db, appId } from "../../lib/firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 interface Plan {
   id: string;
   name: string;
-  priceMonthly: number;
-  priceYearly: number;
+  price_monthly: number;
+  price_yearly: number;
   features: string[];
   limits: {
     users: number;
@@ -49,8 +39,8 @@ const AdminPlans = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Plan>>({
     name: "",
-    priceMonthly: 0,
-    priceYearly: 0,
+    price_monthly: 0,
+    price_yearly: 0,
     limits: { users: 1, msgs: 1000 },
     modules: { chatbot: false, automation: false, api: false },
     features: [],
@@ -88,45 +78,34 @@ const AdminPlans = () => {
     setIsConfirmOpen(true);
   };
 
-  // 1. Carregar Planos do Firestore em Tempo Real
+  // Load data from Django
   useEffect(() => {
-    const q = query(
-      collection(db, "artifacts", appId, "plans"),
-      orderBy("priceMonthly")
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const fetchedPlans = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Plan[];
-        setPlans(fetchedPlans);
-        setIsLoading(false);
-      },
-      (error) => {
+    const loadPlans = async () => {
+      setIsLoading(true);
+      try {
+        const data = await apiFetch("/master/plans/");
+        setPlans(data);
+      } catch (error) {
         console.error("Erro ao buscar planos:", error);
+      } finally {
         setIsLoading(false);
       }
-    );
+    };
 
-    return () => unsubscribe();
+    loadPlans();
   }, []);
 
   // 2. Função para Abrir Modal (Corrigindo o bug de vir vazio)
   const openModal = (plan?: Plan) => {
     if (plan) {
-      // Modo Edição: Preenche os dados
       setEditingId(plan.id);
       setFormData({ ...plan });
     } else {
-      // Modo Criação: Limpa os dados
       setEditingId(null);
       setFormData({
         name: "",
-        priceMonthly: 0,
-        priceYearly: 0,
+        price_monthly: 0,
+        price_yearly: 0,
         limits: { users: 1, msgs: 1000 },
         modules: { chatbot: false, automation: false, api: false },
         features: [],
@@ -138,7 +117,7 @@ const AdminPlans = () => {
 
   // 3. Função de Salvar (Corrigindo o bug de não salvar)
   const handleSave = async () => {
-    if (!formData.name || !formData.priceMonthly) {
+    if (!formData.name || formData.price_monthly === undefined) {
       showAlert(
         "Campos Obrigatórios",
         "Por favor, preencha o nome e o preço mensal.",
@@ -149,12 +128,8 @@ const AdminPlans = () => {
 
     setIsSaving(true);
     try {
-      const plansRef = collection(db, "artifacts", appId, "plans");
-
-      // Montar objeto de features para exibição visual no card
       const featuresList = [
-        `${formData.limits?.users} Atendente${
-          (formData.limits?.users || 0) > 1 ? "s" : ""
+        `${formData.limits?.users} Atendente${(formData.limits?.users || 0) > 1 ? "s" : ""
         }`,
         `${formData.limits?.msgs} Mensagens`,
         formData.modules?.chatbot ? "Chatbot Incluso" : null,
@@ -162,27 +137,35 @@ const AdminPlans = () => {
         formData.modules?.api ? "API Access" : null,
       ].filter(Boolean) as string[];
 
-      const dataToSave = {
-        ...formData,
+      const payload = {
+        name: formData.name,
+        price_monthly: formData.price_monthly,
+        price_yearly: formData.price_yearly || 0,
+        limits: formData.limits,
+        modules: formData.modules,
         features: featuresList,
-        updatedAt: new Date().toISOString(),
+        recommended: formData.recommended,
+        status: "active",
       };
 
       if (editingId) {
-        // Atualizar
-        await updateDoc(doc(plansRef, editingId), dataToSave);
-      } else {
-        // Criar
-        await addDoc(plansRef, {
-          ...dataToSave,
-          createdAt: new Date().toISOString(),
+        const updated = await apiFetch(`/master/plans/${editingId}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
         });
+        setPlans(prev => prev.map(p => p.id === editingId ? updated : p));
+      } else {
+        const created = await apiFetch("/master/plans/", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setPlans(prev => [...prev, created]);
       }
       setIsModalOpen(false);
       showAlert("Sucesso", "Plano salvo com sucesso.", "success");
     } catch (error: any) {
       console.error("Erro ao salvar plano:", error);
-      showAlert("Erro", `Erro ao salvar: ${error.message}`, "error");
+      showAlert("Erro", "Erro ao salvar plano.", "error");
     } finally {
       setIsSaving(false);
     }
@@ -198,7 +181,8 @@ const AdminPlans = () => {
       showCancel: true,
       onConfirm: async () => {
         try {
-          await deleteDoc(doc(db, "artifacts", appId, "plans", id));
+          await apiFetch(`/master/plans/${id}/`, { method: "DELETE" });
+          setPlans(prev => prev.filter(p => p.id !== id));
         } catch (error) {
           console.error("Erro ao excluir:", error);
           showAlert("Erro", "Erro ao excluir plano.", "error");
@@ -236,11 +220,10 @@ const AdminPlans = () => {
           {plans.map((plan) => (
             <div
               key={plan.id}
-              className={`bg-white dark:bg-gray-800 rounded-xl border p-6 flex flex-col relative transition-all hover:shadow-lg ${
-                plan.recommended
+              className={`bg-white dark:bg-gray-800 rounded-xl border p-6 flex flex-col relative transition-all hover:shadow-lg ${plan.recommended
                   ? "border-[#6C63FF] shadow-md ring-1 ring-indigo-100 dark:ring-indigo-900"
                   : "border-gray-200 dark:border-gray-700 shadow-sm"
-              }`}
+                }`}
             >
               {plan.recommended && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#6C63FF] text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">
@@ -270,12 +253,12 @@ const AdminPlans = () => {
 
               <div className="mb-6">
                 <span className="text-3xl font-bold text-gray-900 dark:text-white">
-                  R$ {plan.priceMonthly}
+                  R$ {plan.price_monthly}
                 </span>
                 <span className="text-gray-500 dark:text-gray-400">/mês</span>
-                {plan.priceYearly > 0 && (
+                {plan.price_yearly > 0 && (
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    ou R$ {plan.priceYearly} anual
+                    ou R$ {plan.price_yearly} anual
                   </p>
                 )}
               </div>
@@ -359,11 +342,11 @@ const AdminPlans = () => {
                   <input
                     type="number"
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    value={formData.priceMonthly}
+                    value={formData.price_monthly}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        priceMonthly: Number(e.target.value),
+                        price_monthly: Number(e.target.value),
                       })
                     }
                   />
@@ -375,11 +358,11 @@ const AdminPlans = () => {
                   <input
                     type="number"
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    value={formData.priceYearly}
+                    value={formData.price_yearly}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        priceYearly: Number(e.target.value),
+                        price_yearly: Number(e.target.value),
                       })
                     }
                   />
@@ -433,7 +416,7 @@ const AdminPlans = () => {
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600">
                   <input
-                    type="checkbox" 
+                    type="checkbox"
                     className="rounded text-indigo-600"
                     checked={formData.modules?.chatbot}
                     onChange={(e) =>

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
-import { db, auth, appId } from "../../lib/firebase";
+import { apiFetch } from "../../lib/api";
 import {
   Loader2,
   AlertCircle,
@@ -48,7 +47,7 @@ interface Proposal {
   number: string;
   date: string;
   validity: string;
-  client: string;
+  client_name: string;
   clientId?: string;
   contact: string;
   contactId?: string;
@@ -78,126 +77,60 @@ const ProposalPrint = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!auth.currentUser || !id) return;
+      if (!id) return;
       setLoading(true);
 
       try {
         // 1. Buscar Proposta
-        const proposalRef = doc(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          auth.currentUser.uid,
-          "proposals",
-          id
-        );
-        const proposalSnap = await getDoc(proposalRef);
-
-        if (!proposalSnap.exists()) {
-          setError("Proposta não encontrada.");
-          setLoading(false);
-          return;
-        }
-
-        const proposalData = {
-          id: proposalSnap.id,
-          ...proposalSnap.data(),
-        } as Proposal;
+        const proposalData = await apiFetch(`/crm/proposals/${id}/`) as Proposal;
         setProposal(proposalData);
 
-        // 2. Buscar Perfil do Usuário
-        const profileRef = doc(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          auth.currentUser.uid,
-          "settings",
-          "profile"
-        );
-        const profileSnap = await getDoc(profileRef);
-
-        if (profileSnap.exists()) {
-          setUserProfile(profileSnap.data() as UserProfile);
-        } else {
+        // 2. Buscar Perfil do Usuário (Django)
+        try {
+          const userData = await apiFetch("/users/me/");
           setUserProfile({
-            name: auth.currentUser.displayName || "Consultor",
-            role: "Consultor Comercial",
-            department: "Vendas",
-            phone: "(00) 00000-0000",
-            email: auth.currentUser.email || "",
+            name: userData.first_name + " " + (userData.last_name || ""),
+            role: userData.profile?.role || "Consultor Comercial",
+            department: "Vendas", // Pode vir do profile se adicionarmos
+            phone: userData.profile?.phone || "(00) 00000-0000",
+            email: userData.email,
           });
+        } catch (e) {
+          console.error("Erro ao buscar perfil:", e);
         }
 
         // 3. Buscar Detalhes do Cliente
         let details: any = {};
         if (proposalData.clientId) {
           if (proposalData.clientType === "PJ") {
-            const orgRef = doc(
-              db,
-              "artifacts",
-              appId,
-              "users",
-              auth.currentUser.uid,
-              "organizations",
-              proposalData.clientId
-            );
-            const orgSnap = await getDoc(orgRef);
-            if (orgSnap.exists()) {
-              const org = orgSnap.data();
-              details = {
-                name: org.socialReason || org.fantasyName,
-                doc: org.cnpj,
-                address: `${org.address}, ${org.number} - ${org.neighborhood}`,
-                city: `${org.city}/${org.state}`,
-                cep: org.cep,
-                email: org.email || "",
-                phone: org.phone || "",
-              };
+            const org = await apiFetch(`/crm/organizations/${proposalData.clientId}/`);
+            details = {
+              name: org.social_reason || org.fantasy_name,
+              doc: org.cnpj,
+              address: org.address || "N/A", // Django model doesn't have address yet, could add JSON field
+              city: org.city || "N/A",
+              cep: org.cep || "N/A",
+              email: org.email || "",
+              phone: org.phone || "",
+            };
 
-              if (proposalData.contactId) {
-                const contactRef = doc(
-                  db,
-                  "artifacts",
-                  appId,
-                  "users",
-                  auth.currentUser.uid,
-                  "contacts",
-                  proposalData.contactId
-                );
-                const contactSnap = await getDoc(contactRef);
-                if (contactSnap.exists()) {
-                  const contact = contactSnap.data();
-                  details.contactName = contact.name;
-                  details.email = contact.email || details.email;
-                  details.phone = contact.phone || details.phone;
-                }
-              }
+            if (proposalData.contactId) {
+              const contact = await apiFetch(`/crm/contacts/${proposalData.contactId}/`);
+              details.contactName = contact.name;
+              details.email = contact.email || details.email;
+              details.phone = contact.phone || details.phone;
             }
           } else {
-            const indRef = doc(
-              db,
-              "artifacts",
-              appId,
-              "users",
-              auth.currentUser.uid,
-              "individuals",
-              proposalData.clientId
-            );
-            const indSnap = await getDoc(indRef);
-            if (indSnap.exists()) {
-              const ind = indSnap.data();
-              details = {
-                name: ind.name,
-                doc: ind.cpf,
-                address: `${ind.address}, ${ind.number} - ${ind.neighborhood}`,
-                city: `${ind.city}/${ind.state}`,
-                cep: ind.cep,
-                phone: ind.phone,
-                email: ind.email,
-              };
-            }
+            const ind = await apiFetch(`/crm/individuals/${proposalData.clientId}/`);
+            details = {
+              name: ind.name,
+              doc: ind.cpf,
+              address: ind.address || "N/A",
+              city: ind.city || "N/A",
+              cep: ind.cep || "N/A",
+              phone: ind.phone || "N/A",
+              email: ind.email || "N/A",
+            };
           }
         }
         setClientDetails(details);
@@ -397,7 +330,7 @@ const ProposalPrint = () => {
               <div>
                 <p>
                   <span className="font-bold text-gray-700">Cliente:</span>{" "}
-                  {proposal.client}
+                  {proposal.client_name}
                 </p>
                 <p className="mt-1">
                   <span className="font-bold text-gray-700">CNPJ/CPF:</span>{" "}

@@ -49,17 +49,7 @@ import {
   signOut,
   User as FirebaseUser,
 } from "firebase/auth";
-import { auth, db, initialAuthToken, appId } from "./lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc,
-  limit,
-  addDoc,
-} from "firebase/firestore";
+import { auth, initialAuthToken, appId } from "./lib/firebase";
 import { apiFetch } from "./lib/api";
 
 // Public Pages

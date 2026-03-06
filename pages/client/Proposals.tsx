@@ -19,18 +19,8 @@ import {
   Briefcase,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { db, auth, appId } from "../../lib/firebase"; // Caminho relativo mantido
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore";
-import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal"; // Caminho relativo mantido
+import { apiFetch } from "../../lib/api";
+import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 // --- Interfaces ---
 
@@ -71,7 +61,7 @@ interface Proposal {
   number: string;
   date: string;
   validity: string;
-  client: string;
+  client_name: string;
   clientId?: string;
   contact: string;
   contactId?: string;
@@ -82,8 +72,9 @@ interface Proposal {
   clientType: "PJ" | "PF";
   items: ProposalItem[];
   terms: ProposalTerms;
-  createdAt: string;
-  updatedAt?: string;
+  content?: string;
+  created_at: string;
+  updated_at?: string;
 }
 
 // Interfaces for fetching data
@@ -224,65 +215,37 @@ const Proposals = () => {
   };
 
   // 1. Initial Data Load
-  useEffect(() => {
-    if (!auth.currentUser) return;
-    const uid = auth.currentUser.uid;
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [
+        proposalsData,
+        orgsData,
+        contactsData,
+        individualsData,
+        productsData
+      ] = await Promise.all([
+        apiFetch("/crm/proposals/"),
+        apiFetch("/crm/organizations/"),
+        apiFetch("/crm/contacts/"),
+        apiFetch("/crm/individuals/"),
+        apiFetch("/inventory/products/")
+      ]);
 
-    // Proposals
-    const qProposals = query(
-      collection(db, "artifacts", appId, "users", uid, "proposals"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubProposals = onSnapshot(qProposals, (snapshot) => {
-      setProposals(
-        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Proposal))
-      );
+      setProposals(proposalsData);
+      setOrganizations(orgsData);
+      setContacts(contactsData);
+      setIndividuals(individualsData);
+      setProducts(productsData);
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    } finally {
       setIsLoading(false);
-    });
+    }
+  };
 
-    // Organizations
-    const unsubOrgs = onSnapshot(
-      collection(db, "artifacts", appId, "users", uid, "organizations"),
-      (snap) =>
-        setOrganizations(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as Organization))
-        )
-    );
-
-    // Contacts
-    const unsubContacts = onSnapshot(
-      collection(db, "artifacts", appId, "users", uid, "contacts"),
-      (snap) =>
-        setContacts(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as ContactPerson))
-        )
-    );
-
-    // Individuals
-    const unsubIndividuals = onSnapshot(
-      collection(db, "artifacts", appId, "users", uid, "individuals"),
-      (snap) =>
-        setIndividuals(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as IndividualClient))
-        )
-    );
-
-    // Products
-    const unsubProducts = onSnapshot(
-      collection(db, "artifacts", appId, "users", uid, "products"),
-      (snap) =>
-        setProducts(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product))
-        )
-    );
-
-    return () => {
-      unsubProposals();
-      unsubOrgs();
-      unsubContacts();
-      unsubIndividuals();
-      unsubProducts();
-    };
+  useEffect(() => {
+    loadData();
   }, []);
 
   // --- Helpers ---
@@ -491,7 +454,7 @@ const Proposals = () => {
       );
       return;
     }
-    if (!formData.client || !auth.currentUser) {
+    if (!formData.client_name) {
       setTimeout(
         () =>
           showAlert(
@@ -506,29 +469,32 @@ const Proposals = () => {
 
     setIsSaving(true);
     try {
-      const collectionRef = collection(
-        db,
-        "artifacts",
-        appId,
-        "users",
-        auth.currentUser.uid,
-        "proposals"
-      );
-
       const payload = {
-        ...formData,
-        updatedAt: new Date().toISOString(),
+        number: formData.number,
+        date: formData.date,
+        validity: formData.validity,
+        client_name: formData.client_name,
+        value: formData.value,
+        status: formData.status,
+        items: formData.items,
+        terms: formData.terms,
+        contact: formData.contactId || null,
+        // Deal could be added here if needed
       };
 
       if (editingId) {
-        await updateDoc(doc(collectionRef, editingId), payload);
+        await apiFetch(`/crm/proposals/${editingId}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
       } else {
-        await addDoc(collectionRef, {
-          ...payload,
-          createdAt: new Date().toISOString(),
+        await apiFetch("/crm/proposals/", {
+          method: "POST",
+          body: JSON.stringify(payload),
         });
       }
       setIsCreating(false);
+      loadData();
       showAlert("Sucesso", "Proposta salva com sucesso!", "success");
     } catch (error) {
       console.error("Erro ao salvar:", error);
@@ -546,19 +512,9 @@ const Proposals = () => {
       confirmText: "Excluir",
       showCancel: true,
       onConfirm: async () => {
-        if (!auth.currentUser) return;
         try {
-          await deleteDoc(
-            doc(
-              db,
-              "artifacts",
-              appId,
-              "users",
-              auth.currentUser.uid,
-              "proposals",
-              id
-            )
-          );
+          await apiFetch(`/crm/proposals/${id}/`, { method: "DELETE" });
+          setProposals(proposals.filter((p) => p.id !== id));
         } catch (error) {
           console.error("Erro ao excluir:", error);
           showAlert("Erro", "Não foi possível excluir a proposta.", "error");
@@ -571,17 +527,17 @@ const Proposals = () => {
   const availableClients =
     formData.clientType === "PJ"
       ? organizations.map((o) => ({
-          id: o.id,
-          name: o.fantasyName || o.socialReason,
-          doc: o.cnpj,
-          type: "PJ",
-        }))
+        id: o.id,
+        name: o.fantasyName || o.socialReason,
+        doc: o.cnpj,
+        type: "PJ",
+      }))
       : individuals.map((i) => ({
-          id: i.id,
-          name: i.name,
-          doc: i.cpf,
-          type: "PF",
-        }));
+        id: i.id,
+        name: i.name,
+        doc: i.cpf,
+        type: "PF",
+      }));
 
   const availableContacts =
     formData.clientType === "PJ" && formData.clientId
@@ -594,7 +550,7 @@ const Proposals = () => {
     if (client) {
       setFormData({
         ...formData,
-        client: client.name,
+        client_name: client.name,
         clientId: client.id,
         document: client.doc,
         contact: "",
@@ -603,7 +559,7 @@ const Proposals = () => {
     } else {
       setFormData({
         ...formData,
-        client: "",
+        client_name: "",
         clientId: "",
         document: "",
         contact: "",
@@ -619,7 +575,7 @@ const Proposals = () => {
   const filteredProposals = proposals.filter((p) => {
     const searchLower = searchTerm.toLowerCase();
     return (
-      (p.client && p.client.toLowerCase().includes(searchLower)) ||
+      (p.client_name && p.client_name.toLowerCase().includes(searchLower)) ||
       (p.number && p.number.toLowerCase().includes(searchLower)) ||
       (p.document && p.document.includes(searchLower))
     );
@@ -813,8 +769,8 @@ const Proposals = () => {
                       {availableContacts.length > 0
                         ? "Selecione o contato..."
                         : formData.clientId
-                        ? "Sem contatos cadastrados"
-                        : "Selecione uma organização primeiro"}
+                          ? "Sem contatos cadastrados"
+                          : "Selecione uma organização primeiro"}
                     </option>
                     {availableContacts.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -1040,11 +996,10 @@ const Proposals = () => {
 
               {/* Linha de Valores */}
               <div
-                className={`grid gap-4 items-end pt-4 ${
-                  currentItem.status === "Locação"
-                    ? "grid-cols-5"
-                    : "grid-cols-4"
-                }`}
+                className={`grid gap-4 items-end pt-4 ${currentItem.status === "Locação"
+                  ? "grid-cols-5"
+                  : "grid-cols-4"
+                  }`}
               >
                 <div className="col-span-1">
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
@@ -1562,9 +1517,9 @@ const Proposals = () => {
                     </td>
                     <td
                       className="px-6 py-4 font-medium text-white truncate max-w-[200px]"
-                      title={proposal.client}
+                      title={proposal.client_name}
                     >
-                      {proposal.client}
+                      {proposal.client_name}
                     </td>
                     <td className="px-6 py-4 text-gray-400">
                       {proposal.contact || "N/A"}

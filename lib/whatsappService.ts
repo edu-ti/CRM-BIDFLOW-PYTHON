@@ -1,5 +1,4 @@
-import { db, appId } from "./firebase";
-import { doc, getDoc } from "firebase/firestore";
+
 
 // CONFIGURAÇÕES
 const API_URL = "http://localhost:8080";

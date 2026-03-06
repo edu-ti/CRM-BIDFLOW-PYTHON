@@ -14,28 +14,21 @@ import {
   X,
   Trash2,
 } from "lucide-react";
-import { db, auth, appId } from "../../lib/firebase";
-import {
-  collection,
-  query,
-  onSnapshot,
-  orderBy,
-  addDoc,
-  deleteDoc,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal from "../../components/ConfirmModal";
 
 interface Campaign {
   id: string;
   name: string;
-  channel: "whatsapp" | "email" | "sms";
-  status: "active" | "completed" | "draft" | "scheduled" | "paused";
-  sent: number;
-  openRate: string;
-  date: string;
-  createdAt: string;
+  status: "Ativa" | "Pausada" | "Concluída" | "Rascunho";
+  target_audience: string;
+  message_content: string;
+  scheduled_date: string;
+  created_at: string;
+  // Fields for UI demo/legacy
+  sent?: number;
+  openRate?: string;
+  channel?: "whatsapp" | "email" | "sms";
 }
 
 const Campaigns = () => {
@@ -47,68 +40,45 @@ const Campaigns = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newCampaign, setNewCampaign] = useState<Partial<Campaign>>({
     name: "",
-    channel: "whatsapp",
-    status: "draft",
-    sent: 0,
-    openRate: "0%",
+    target_audience: "Todos os Clientes",
+    message_content: "",
+    status: "Rascunho",
   });
 
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const q = query(
-      collection(
-        db,
-        "artifacts",
-        appId,
-        "users",
-        auth.currentUser.uid,
-        "campaigns"
-      ),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetched = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().date
-          ? new Date(doc.data().date).toLocaleDateString()
-          : "-",
-      })) as Campaign[];
-      setCampaigns(fetched);
+  const fetchCampaigns = async () => {
+    setIsLoading(true);
+    try {
+      const data = await apiFetch("/campaigns/");
+      setCampaigns(data);
+    } catch (error) {
+      console.error("Erro ao carregar campanhas:", error);
+    } finally {
       setIsLoading(false);
-    });
+    }
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    fetchCampaigns();
   }, []);
 
   const handleCreateCampaign = async () => {
-    if (!newCampaign.name || !auth.currentUser) return;
+    if (!newCampaign.name) return;
 
     try {
-      await addDoc(
-        collection(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          auth.currentUser.uid,
-          "campaigns"
-        ),
-        {
+      await apiFetch("/campaigns/", {
+        method: "POST",
+        body: JSON.stringify({
           ...newCampaign,
-          createdAt: new Date().toISOString(),
-          date: new Date().toISOString(),
-        }
-      );
+          scheduled_date: new Date().toISOString(),
+        }),
+      });
+      fetchCampaigns();
       setIsModalOpen(false);
       setNewCampaign({
         name: "",
-        channel: "whatsapp",
-        status: "draft",
-        sent: 0,
-        openRate: "0%",
+        target_audience: "Todos os Clientes",
+        message_content: "",
+        status: "Rascunho",
       });
     } catch (error) {
       console.error("Erro ao criar campanha:", error);
@@ -116,20 +86,10 @@ const Campaigns = () => {
   };
 
   const handleDeleteCampaign = async (id: string) => {
-    if (!auth.currentUser) return;
     if (confirm("Tem certeza que deseja excluir esta campanha?")) {
       try {
-        await deleteDoc(
-          doc(
-            db,
-            "artifacts",
-            appId,
-            "users",
-            auth.currentUser.uid,
-            "campaigns",
-            id
-          )
-        );
+        await apiFetch(`/campaigns/${id}/`, { method: "DELETE" });
+        setCampaigns(campaigns.filter((c) => c.id !== id));
       } catch (error) {
         console.error("Erro ao excluir:", error);
       }
@@ -138,15 +98,13 @@ const Campaigns = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "active":
+      case "Ativa":
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-      case "completed":
+      case "Concluída":
         return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
-      case "scheduled":
-        return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
-      case "paused":
+      case "Pausada":
         return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
-      case "draft":
+      case "Rascunho":
         return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
       default:
         return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400";
@@ -264,10 +222,10 @@ const Campaigns = () => {
               onChange={(e) => setFilterStatus(e.target.value)}
             >
               <option value="all">Todos os Status</option>
-              <option value="active">Ativas</option>
-              <option value="completed">Concluídas</option>
-              <option value="scheduled">Agendadas</option>
-              <option value="draft">Rascunhos</option>
+              <option value="Ativa">Ativas</option>
+              <option value="Concluída">Concluídas</option>
+              <option value="Pausada">Pausadas</option>
+              <option value="Rascunho">Rascunhos</option>
             </select>
           </div>
         </div>
@@ -311,9 +269,8 @@ const Campaigns = () => {
                       {campaign.name}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 capitalize">
-                        {getChannelIcon(campaign.channel)}
-                        {campaign.channel}
+                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                        {campaign.target_audience}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -329,10 +286,10 @@ const Campaigns = () => {
                       {campaign.sent?.toLocaleString() || 0}
                     </td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm">
-                      {campaign.openRate}
+                      {campaign.openRate || "0%"}
                     </td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm">
-                      {campaign.date}
+                      {campaign.scheduled_date ? new Date(campaign.scheduled_date).toLocaleDateString() : "-"}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
@@ -370,20 +327,23 @@ const Campaigns = () => {
                   setNewCampaign({ ...newCampaign, name: e.target.value })
                 }
               />
-              <select
+              <input
                 className="w-full border p-2 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                value={newCampaign.channel}
+                placeholder="Público Alvo (ex: Clientes VIP)"
+                value={newCampaign.target_audience}
                 onChange={(e) =>
-                  setNewCampaign({
-                    ...newCampaign,
-                    channel: e.target.value as any,
-                  })
+                  setNewCampaign({ ...newCampaign, target_audience: e.target.value })
                 }
-              >
-                <option value="whatsapp">WhatsApp</option>
-                <option value="email">Email</option>
-                <option value="sms">SMS</option>
-              </select>
+              />
+              <textarea
+                className="w-full border p-2 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                placeholder="Conteúdo da Mensagem"
+                rows={3}
+                value={newCampaign.message_content}
+                onChange={(e) =>
+                  setNewCampaign({ ...newCampaign, message_content: e.target.value })
+                }
+              />
               <select
                 className="w-full border p-2 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                 value={newCampaign.status}
@@ -394,9 +354,9 @@ const Campaigns = () => {
                   })
                 }
               >
-                <option value="draft">Rascunho</option>
-                <option value="scheduled">Agendada</option>
-                <option value="active">Ativa (Enviar Agora)</option>
+                <option value="Rascunho">Rascunho</option>
+                <option value="Ativa">Ativa (Enviar Agora)</option>
+                <option value="Pausada">Pausada</option>
               </select>
             </div>
             <div className="flex justify-end gap-2 mt-6">

@@ -1,8 +1,13 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth.models import User
 from .models import UserProfile
 from .serializers import UserSerializer
+
+from rest_framework import viewsets, permissions as drf_permissions
+from .serializers import UserSerializer, UserProfileSerializer
+from saas_master.permissions import IsSuperAdmin
 
 class CurrentUserView(APIView):
     permission_classes = [IsAuthenticated]
@@ -35,6 +40,10 @@ class CurrentUserView(APIView):
         return Response({
             'user': UserSerializer(user).data,
             'role': profile.role,
+            'company': {
+                'id': profile.company.id if profile.company else None,
+                'name': profile.company.name if profile.company else None
+            },
             'permissions': {
                 'superadmin': profile.role == 'superadmin',
                 'finance': profile.finance,
@@ -43,3 +52,17 @@ class CurrentUserView(APIView):
                 'sales': profile.sales
             }
         })
+
+class MasterUserViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para o SuperAdmin gerir todos os utilizadores do sistema.
+    """
+    queryset = User.objects.all().select_related('profile', 'profile__company')
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    
+    def get_queryset(self):
+        company_id = self.request.query_params.get('company_id')
+        if company_id:
+            return self.queryset.filter(profile__company_id=company_id)
+        return self.queryset

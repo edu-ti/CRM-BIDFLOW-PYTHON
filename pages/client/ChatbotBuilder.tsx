@@ -15,8 +15,7 @@ import {
   Download,
   Zap,
 } from "lucide-react";
-import { db, auth, appId } from "../../lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 interface Node {
@@ -169,11 +168,10 @@ const TestModal = ({
                     <GitFork size={12} className="text-pink-500" />
                   )}
                   <span
-                    className={`text-xs font-medium italic ${
-                      msg.text.startsWith("[Action]")
+                    className={`text-xs font-medium italic ${msg.text.startsWith("[Action]")
                         ? "text-purple-600 dark:text-purple-400"
                         : "text-pink-600 dark:text-pink-400"
-                    }`}
+                      }`}
                   >
                     {msg.text}
                   </span>
@@ -182,16 +180,14 @@ const TestModal = ({
             ) : (
               <div
                 key={i}
-                className={`flex ${
-                  msg.sender === "user" ? "justify-end" : "justify-start"
-                } animate-in slide-in-from-bottom-2 duration-300`}
+                className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"
+                  } animate-in slide-in-from-bottom-2 duration-300`}
               >
                 <div
-                  className={`max-w-[80%] p-3 rounded-xl text-sm shadow-sm relative ${
-                    msg.sender === "user"
+                  className={`max-w-[80%] p-3 rounded-xl text-sm shadow-sm relative ${msg.sender === "user"
                       ? "bg-indigo-600 text-white rounded-tr-none"
                       : "bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-none"
-                  }`}
+                    }`}
                 >
                   {msg.text}
                 </div>
@@ -279,29 +275,20 @@ const ChatbotBuilder = () => {
     setIsConfirmOpen(true);
   };
 
-  // Load state from Firestore
+  // Load state from Django
   useEffect(() => {
     const loadFlow = async () => {
-      if (!auth.currentUser) return;
-
+      setIsLoading(true);
       try {
-        const docRef = doc(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          auth.currentUser.uid,
-          "chatbot",
-          "main_flow"
-        );
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.nodes && data.connections) {
-            setNodes(data.nodes);
-            setConnections(data.connections);
+        const data = await apiFetch("/chatbot/");
+        if (data && data.length > 0) {
+          const mainFlow = data[0]; // Take the first one for now
+          if (mainFlow.flow_data && mainFlow.flow_data.nodes) {
+            setNodes(mainFlow.flow_data.nodes);
+            setConnections(mainFlow.flow_data.connections || []);
           }
+          // Store the ID for updating
+          (window as any)._currentFlowId = mainFlow.id;
         }
       } catch (error) {
         console.error("Erro ao carregar fluxo:", error);
@@ -314,29 +301,31 @@ const ChatbotBuilder = () => {
   }, []);
 
   const handleSave = async () => {
-    if (!auth.currentUser) return;
     setIsSaving(true);
     setSaveSuccess(false);
 
+    const flowId = (window as any)._currentFlowId;
+    const payload = {
+      name: "Main Flow",
+      flow_data: {
+        nodes,
+        connections,
+      },
+    };
+
     try {
-      const docRef = doc(
-        db,
-        "artifacts",
-        appId,
-        "users",
-        auth.currentUser.uid,
-        "chatbot",
-        "main_flow"
-      );
-      await setDoc(
-        docRef,
-        {
-          nodes,
-          connections,
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
+      if (flowId) {
+        await apiFetch(`/chatbot/${flowId}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const created = await apiFetch("/chatbot/", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        (window as any)._currentFlowId = created.id;
+      }
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
@@ -370,12 +359,12 @@ const ChatbotBuilder = () => {
         type === "message"
           ? "Nova mensagem automática"
           : type === "question"
-          ? "Nova pergunta"
-          : type === "condition"
-          ? "Nova condição"
-          : type === "action"
-          ? "Nova ação"
-          : "Novo nó",
+            ? "Nova pergunta"
+            : type === "condition"
+              ? "Nova condição"
+              : type === "action"
+                ? "Nova ação"
+                : "Novo nó",
       x: 50 + Math.random() * 50,
       y: 50 + Math.random() * 50,
     };
@@ -469,11 +458,10 @@ const ChatbotBuilder = () => {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className={`flex items-center gap-2 px-4 py-2 text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md ${
-              saveSuccess
+            className={`flex items-center gap-2 px-4 py-2 text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md ${saveSuccess
                 ? "bg-green-600 hover:bg-green-700"
                 : "bg-indigo-600 hover:bg-indigo-700"
-            }`}
+              }`}
           >
             {isSaving ? (
               <Loader2 size={18} className="animate-spin" />
@@ -515,9 +503,8 @@ const ChatbotBuilder = () => {
             return (
               <g key={conn.id}>
                 <path
-                  d={`M ${startX} ${startY} C ${startX + 50} ${startY}, ${
-                    endX - 50
-                  } ${endY}, ${endX} ${endY}`}
+                  d={`M ${startX} ${startY} C ${startX + 50} ${startY}, ${endX - 50
+                    } ${endY}, ${endX} ${endY}`}
                   fill="none"
                   className="stroke-slate-400 dark:stroke-slate-600 transition-colors"
                   strokeWidth="2"
@@ -542,31 +529,29 @@ const ChatbotBuilder = () => {
               handleMouseDown(node.id);
             }}
             style={{ left: node.x, top: node.y }}
-            className={`absolute w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border-0 ring-1 ring-gray-200 dark:ring-gray-700 group hover:ring-2 transition-all z-10 ${
-              node.type === "start"
+            className={`absolute w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border-0 ring-1 ring-gray-200 dark:ring-gray-700 group hover:ring-2 transition-all z-10 ${node.type === "start"
                 ? "hover:ring-green-400"
                 : node.type === "condition"
-                ? "hover:ring-pink-400"
-                : node.type === "action"
-                ? "hover:ring-purple-400"
-                : "hover:ring-indigo-400"
-            }`}
+                  ? "hover:ring-pink-400"
+                  : node.type === "action"
+                    ? "hover:ring-purple-400"
+                    : "hover:ring-indigo-400"
+              }`}
           >
             {/* Node Header */}
             <div
-              className={`px-4 py-2 rounded-t-xl flex justify-between items-center ${
-                node.type === "start"
+              className={`px-4 py-2 rounded-t-xl flex justify-between items-center ${node.type === "start"
                   ? "bg-gradient-to-r from-green-500 to-emerald-600"
                   : node.type === "input"
-                  ? "bg-gradient-to-r from-orange-500 to-amber-600"
-                  : node.type === "question"
-                  ? "bg-gradient-to-r from-orange-500 to-amber-600"
-                  : node.type === "condition"
-                  ? "bg-gradient-to-r from-pink-500 to-rose-600"
-                  : node.type === "action"
-                  ? "bg-gradient-to-r from-purple-500 to-violet-600"
-                  : "bg-gradient-to-r from-indigo-500 to-blue-600"
-              }`}
+                    ? "bg-gradient-to-r from-orange-500 to-amber-600"
+                    : node.type === "question"
+                      ? "bg-gradient-to-r from-orange-500 to-amber-600"
+                      : node.type === "condition"
+                        ? "bg-gradient-to-r from-pink-500 to-rose-600"
+                        : node.type === "action"
+                          ? "bg-gradient-to-r from-purple-500 to-violet-600"
+                          : "bg-gradient-to-r from-indigo-500 to-blue-600"
+                }`}
             >
               <div className="flex items-center gap-2 text-white font-semibold text-xs uppercase tracking-wider">
                 {node.type === "start" && (

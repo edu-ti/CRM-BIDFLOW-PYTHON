@@ -11,58 +11,42 @@ import {
   Trash2,
   Check,
   Edit2,
+  Loader2,
 } from "lucide-react";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 interface CalendarEvent {
-  id: number;
+  id: string;
   title: string;
-  type: "meeting" | "deadline" | "call" | "personal";
+  type: string;
   time: string;
-  date: Date;
+  date: string; // ISO string from API
+  description?: string;
+  color?: string;
 }
 
 const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
 
-  // Initialize with some events relative to current month/year so they appear in the demo
-  const [events, setEvents] = useState<CalendarEvent[]>([
-    {
-      id: 1,
-      title: "Reunião de Equipe",
-      type: "meeting",
-      time: "10:00",
-      date: new Date(new Date().getFullYear(), new Date().getMonth(), 5),
-    },
-    {
-      id: 2,
-      title: "Entrega Projeto X",
-      type: "deadline",
-      time: "17:00",
-      date: new Date(new Date().getFullYear(), new Date().getMonth(), 12),
-    },
-    {
-      id: 3,
-      title: "Call com Cliente",
-      type: "call",
-      time: "14:30",
-      date: new Date(new Date().getFullYear(), new Date().getMonth(), 15),
-    },
-    {
-      id: 4,
-      title: "Dentista",
-      type: "personal",
-      time: "18:00",
-      date: new Date(new Date().getFullYear(), new Date().getMonth(), 15),
-    },
-    {
-      id: 5,
-      title: "Lançamento Campanha",
-      type: "deadline",
-      time: "09:00",
-      date: new Date(new Date().getFullYear(), new Date().getMonth(), 22),
-    },
-  ]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchEvents = async () => {
+    setIsLoading(true);
+    try {
+      const data = await apiFetch("/calendar/events/");
+      setEvents(data);
+    } catch (error) {
+      console.error("Erro ao carregar eventos:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchEvents();
+  }, []);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -144,56 +128,50 @@ const Calendar = () => {
   };
 
   const openEditModal = (event: CalendarEvent) => {
-    const monthStr = (event.date.getMonth() + 1).toString().padStart(2, "0");
-    const dayStr = event.date.getDate().toString().padStart(2, "0");
+    const d = new Date(event.date);
+    const monthStr = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+    const dayStr = d.getUTCDate().toString().padStart(2, "0");
 
     setNewEvent({
       title: event.title,
-      date: `${event.date.getFullYear()}-${monthStr}-${dayStr}`,
+      date: `${d.getUTCFullYear()}-${monthStr}-${dayStr}`,
       time: event.time,
-      type: event.type,
+      type: event.type as any,
     });
-    setEditingId(event.id);
+    setEditingId(event.id as any);
     setIsModalOpen(true);
   };
 
-  const handleSaveEvent = () => {
+  const handleSaveEvent = async () => {
     if (!newEvent.title || !newEvent.date) return;
 
-    // Create Date object from YYYY-MM-DD input string
-    const [year, month, day] = newEvent.date.split("-").map(Number);
-    const eventDate = new Date(year, month - 1, day);
+    const payload = {
+      title: newEvent.title,
+      type: newEvent.type,
+      time: newEvent.time || "00:00",
+      start_date: `${newEvent.date}T${newEvent.time || "00:00"}:00Z`,
+      end_date: `${newEvent.date}T${newEvent.time || "00:00"}:00Z`, // Simplified
+    };
 
-    if (editingId) {
-      // Update existing event
-      setEvents(
-        events.map((e) =>
-          e.id === editingId
-            ? {
-                ...e,
-                title: newEvent.title,
-                type: newEvent.type,
-                time: newEvent.time || "00:00",
-                date: eventDate,
-              }
-            : e
-        )
-      );
-    } else {
-      // Create new event
-      const event: CalendarEvent = {
-        id: Date.now(),
-        title: newEvent.title,
-        type: newEvent.type,
-        time: newEvent.time || "00:00",
-        date: eventDate,
-      };
-      setEvents([...events, event]);
+    try {
+      if (editingId) {
+        await apiFetch(`/calendar/events/${editingId}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch("/calendar/events/", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
+      fetchEvents();
+      setIsModalOpen(false);
+      setNewEvent({ title: "", date: "", time: "", type: "meeting" });
+      setEditingId(null);
+    } catch (error) {
+      console.error("Erro ao salvar evento:", error);
     }
-
-    setIsModalOpen(false);
-    setNewEvent({ title: "", date: "", time: "", type: "meeting" });
-    setEditingId(null);
   };
 
   const handleDeleteEvent = () => {
@@ -204,10 +182,15 @@ const Calendar = () => {
         type: "error",
         confirmText: "Excluir",
         showCancel: true,
-        onConfirm: () => {
-          setEvents(events.filter((e) => e.id !== editingId));
-          setIsModalOpen(false);
-          setEditingId(null);
+        onConfirm: async () => {
+          try {
+            await apiFetch(`/calendar/events/${editingId}/`, { method: "DELETE" });
+            setEvents(events.filter((e) => e.id !== (editingId as any)));
+            setIsModalOpen(false);
+            setEditingId(null);
+          } catch (error) {
+            console.error("Erro ao excluir evento:", error);
+          }
         },
       });
       setIsConfirmOpen(true);
@@ -216,10 +199,14 @@ const Calendar = () => {
 
   const getEventsForDay = (day: number) => {
     return events.filter(
-      (e) =>
-        e.date.getDate() === day &&
-        e.date.getMonth() === currentDate.getMonth() &&
-        e.date.getFullYear() === currentDate.getFullYear()
+      (e) => {
+        const d = new Date(e.date);
+        return (
+          d.getUTCDate() === day &&
+          d.getUTCMonth() === currentDate.getMonth() &&
+          d.getUTCFullYear() === currentDate.getFullYear()
+        );
+      }
     );
   };
 
@@ -253,11 +240,10 @@ const Calendar = () => {
         >
           <div className="flex justify-between items-start">
             <span
-              className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full ${
-                isToday
+              className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full ${isToday
                   ? "bg-indigo-600 text-white"
                   : "text-gray-700 dark:text-gray-300"
-              }`}
+                }`}
             >
               {day}
             </span>
@@ -292,15 +278,14 @@ const Calendar = () => {
                   e.stopPropagation();
                   openEditModal(event);
                 }}
-                className={`px-2 py-1 rounded text-xs truncate border-l-2 cursor-pointer hover:opacity-80 transition shadow-sm ${
-                  event.type === "meeting"
+                className={`px-2 py-1 rounded text-xs truncate border-l-2 cursor-pointer hover:opacity-80 transition shadow-sm ${event.type === "meeting"
                     ? "bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-300"
                     : event.type === "deadline"
-                    ? "bg-red-50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-300"
-                    : event.type === "personal"
-                    ? "bg-green-50 dark:bg-green-900/30 border-green-500 text-green-700 dark:text-green-300"
-                    : "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-500 text-indigo-700 dark:text-indigo-300"
-                }`}
+                      ? "bg-red-50 dark:bg-red-900/30 border-red-500 text-red-700 dark:text-red-300"
+                      : event.type === "personal"
+                        ? "bg-green-50 dark:bg-green-900/30 border-green-500 text-green-700 dark:text-green-300"
+                        : "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-500 text-indigo-700 dark:text-indigo-300"
+                  }`}
               >
                 <span className="font-bold mr-1">{event.time}</span>
                 {event.title}
@@ -367,7 +352,11 @@ const Calendar = () => {
 
         {/* Calendar Grid */}
         <div className="grid grid-cols-7 bg-gray-200 dark:bg-gray-700 gap-px">
-          {renderCalendarDays()}
+          {isLoading ? (
+            <div className="col-span-7 p-12 text-center bg-white dark:bg-gray-800">
+              <Loader2 className="animate-spin text-indigo-500 mx-auto" size={32} />
+            </div>
+          ) : renderCalendarDays()}
         </div>
       </div>
 
@@ -380,41 +369,44 @@ const Calendar = () => {
           <div className="space-y-4">
             {events
               .filter(
-                (e) => e.date >= new Date(new Date().setHours(0, 0, 0, 0))
+                (e) => new Date(e.date) >= new Date(new Date().setHours(0, 0, 0, 0))
               ) // Only future or today
-              .sort((a, b) => a.date.getTime() - b.date.getTime())
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
               .slice(0, 3)
-              .map((event) => (
-                <div
-                  key={event.id}
-                  onClick={() => openEditModal(event)}
-                  className="flex gap-3 items-start pb-4 border-b border-gray-100 dark:border-gray-700 last:border-0 last:pb-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 -mx-2 px-2 rounded-lg transition"
-                >
-                  <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg text-center min-w-[3rem]">
-                    <span className="block text-xs font-bold uppercase">
-                      {monthNames[event.date.getMonth()].substring(0, 3)}
-                    </span>
-                    <span className="block text-xl font-bold">
-                      {event.date.getDate()}
-                    </span>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
-                      {event.title}
-                    </h4>
-                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      <Clock size={12} /> {event.time}
+              .map((event) => {
+                const d = new Date(event.date);
+                return (
+                  <div
+                    key={event.id}
+                    onClick={() => openEditModal(event)}
+                    className="flex gap-3 items-start pb-4 border-b border-gray-100 dark:border-gray-700 last:border-0 last:pb-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 -mx-2 px-2 rounded-lg transition"
+                  >
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg text-center min-w-[3rem]">
+                      <span className="block text-xs font-bold uppercase">
+                        {monthNames[d.getUTCMonth()].substring(0, 3)}
+                      </span>
+                      <span className="block text-xl font-bold">
+                        {d.getUTCDate()}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
+                        {event.title}
+                      </h4>
+                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <Clock size={12} /> {event.time}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            {events.filter(
-              (e) => e.date >= new Date(new Date().setHours(0, 0, 0, 0))
+                );
+              })}
+            {!isLoading && events.filter(
+              (e) => new Date(e.date) >= new Date(new Date().setHours(0, 0, 0, 0))
             ).length === 0 && (
-              <p className="text-gray-500 dark:text-gray-400  text-sm">
-                Nenhum evento próximo.
-              </p>
-            )}
+                <p className="text-gray-500 dark:text-gray-400  text-sm">
+                  Nenhum evento próximo.
+                </p>
+              )}
           </div>
         </div>
       </div>

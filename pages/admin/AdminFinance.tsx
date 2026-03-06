@@ -18,28 +18,18 @@ import {
   AlertCircle,
   RefreshCcw,
 } from "lucide-react";
-import { db, appId } from "../../lib/firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 interface Invoice {
   id: string;
-  companyName: string;
-  companyId?: string;
+  company: string; // ID
+  company_name?: string;
   amount: number;
-  status: "PAID" | "PENDING" | "OVERDUE" | "CANCELLED";
-  dueDate: string;
-  createdAt: string;
-  pdfUrl?: string;
+  status: "paid" | "pending" | "overdue" | "cancelled";
+  due_date: string;
+  created_at: string;
+  paid_at?: string;
 }
 
 interface Company {
@@ -62,9 +52,9 @@ const AdminFinance = () => {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [invoiceForm, setInvoiceForm] = useState<Partial<Invoice>>({
     amount: 0,
-    status: "PENDING",
-    dueDate: new Date().toISOString().split("T")[0],
-    companyName: "",
+    status: "pending",
+    due_date: new Date().toISOString().split("T")[0],
+    company: "",
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -99,45 +89,26 @@ const AdminFinance = () => {
     setIsConfirmOpen(true);
   };
 
-  // 1. Carregar Faturas e Empresas
+  // Load data from Django
   useEffect(() => {
-    const qInvoices = query(
-      collection(db, "artifacts", appId, "invoices"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubInvoices = onSnapshot(
-      qInvoices,
-      (snapshot) => {
-        const data = snapshot.docs.map(
-          (doc) => ({ id: doc.id, ...doc.data() } as Invoice)
-        );
-        setInvoices(data);
-        setIsLoading(false);
-      },
-      (err) => {
-        console.error("Erro ao carregar faturas:", err);
-        setError(
-          "Não foi possível carregar as faturas. Verifique as regras do banco."
-        );
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const [invoicesData, companiesData] = await Promise.all([
+          apiFetch("/master/finance/"),
+          apiFetch("/master/companies/"),
+        ]);
+        setInvoices(invoicesData);
+        setCompanies(companiesData);
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error);
+        setError("Não foi possível carregar os dados financeiros.");
+      } finally {
         setIsLoading(false);
       }
-    );
-
-    const qCompanies = query(
-      collection(db, "artifacts", appId, "companies"),
-      orderBy("name")
-    );
-    const unsubCompanies = onSnapshot(qCompanies, (snapshot) => {
-      const data = snapshot.docs.map(
-        (doc) => ({ id: doc.id, name: doc.data().name } as Company)
-      );
-      setCompanies(data);
-    });
-
-    return () => {
-      unsubInvoices();
-      unsubCompanies();
     };
+
+    loadData();
   }, []);
 
   // 2. Handlers do Modal
@@ -149,16 +120,16 @@ const AdminFinance = () => {
       setEditingInvoice(null);
       setInvoiceForm({
         amount: 0,
-        status: "PENDING",
-        dueDate: new Date().toISOString().split("T")[0],
-        companyName: companies.length > 0 ? companies[0].name : "",
+        status: "pending",
+        due_date: new Date().toISOString().split("T")[0],
+        company: companies.length > 0 ? companies[0].id : "",
       });
     }
     setIsModalOpen(true);
   };
 
   const handleSave = async () => {
-    if (!invoiceForm.companyName || !invoiceForm.amount) {
+    if (!invoiceForm.company || !invoiceForm.amount) {
       showAlert(
         "Campos Obrigatórios",
         "Preencha a empresa e o valor.",
@@ -168,20 +139,32 @@ const AdminFinance = () => {
     }
     setIsSaving(true);
     try {
-      const collectionRef = collection(db, "artifacts", appId, "invoices");
+      const payload = {
+        company: invoiceForm.company,
+        amount: invoiceForm.amount,
+        status: invoiceForm.status,
+        due_date: invoiceForm.due_date,
+        type: "invoice",
+      };
+
       if (editingInvoice) {
-        await updateDoc(doc(collectionRef, editingInvoice.id), invoiceForm);
-      } else {
-        await addDoc(collectionRef, {
-          ...invoiceForm,
-          createdAt: new Date().toISOString(),
+        const updated = await apiFetch(`/master/finance/${editingInvoice.id}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
         });
+        setInvoices(prev => prev.map(i => i.id === editingInvoice.id ? updated : i));
+      } else {
+        const created = await apiFetch("/master/finance/", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setInvoices(prev => [created, ...prev]);
       }
       setIsModalOpen(false);
       showAlert("Sucesso", "Fatura salva com sucesso.", "success");
     } catch (error: any) {
       console.error("Erro ao salvar:", error);
-      showAlert("Erro", `Erro ao salvar: ${error.message}`, "error");
+      showAlert("Erro", "Erro ao salvar fatura.", "error");
     } finally {
       setIsSaving(false);
     }
@@ -201,18 +184,17 @@ const AdminFinance = () => {
       
       DADOS DO CLIENTE
       ------------------------------------------------
-      Cliente: ${inv.companyName}
+      Cliente: ${inv.company_name}
       
       DETALHES DO PAGAMENTO
       ------------------------------------------------
       Valor: R$ ${Number(inv.amount).toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-      })}
-      Vencimento: ${new Date(inv.dueDate).toLocaleDateString("pt-BR")}
-      Status: ${
-        inv.status === "PAID"
-          ? "PAGO"
-          : inv.status === "PENDING"
+      minimumFractionDigits: 2,
+    })}
+      Vencimento: ${new Date(inv.due_date).toLocaleDateString("pt-BR")}
+      Status: ${inv.status === "paid"
+        ? "PAGO"
+        : inv.status === "pending"
           ? "PENDENTE"
           : "ATRASADO"
       }
@@ -226,7 +208,7 @@ const AdminFinance = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Fatura-${inv.companyName.replace(
+    a.download = `Fatura-${(inv.company_name || "Empresa").replace(
       /\s+/g,
       "_"
     )}-${inv.id.substring(0, 6)}.txt`;
@@ -272,22 +254,22 @@ const AdminFinance = () => {
     // Normaliza busca (remove #, minúsculas)
     const cleanSearch = searchTerm.replace("#", "").toLowerCase();
     const matchesSearch =
-      (inv.companyName || "").toLowerCase().includes(cleanSearch) ||
+      (inv.company_name || "").toLowerCase().includes(cleanSearch) ||
       inv.id.toLowerCase().includes(cleanSearch);
 
-    const matchesStatus = statusFilter === "ALL" || inv.status === statusFilter;
+    const matchesStatus = statusFilter === "ALL" || inv.status === statusFilter.toLowerCase();
 
     return matchesSearch && matchesStatus;
   });
 
   // KPI Calc
   const totalRevenue = invoices
-    .filter((i) => i.status === "PAID")
+    .filter((i) => i.status === "paid")
     .reduce((acc, curr) => acc + Number(curr.amount), 0);
   const pendingRevenue = invoices
-    .filter((i) => i.status === "PENDING" || i.status === "OVERDUE")
+    .filter((i) => i.status === "pending" || i.status === "overdue")
     .reduce((acc, curr) => acc + Number(curr.amount), 0);
-  const overdueCount = invoices.filter((i) => i.status === "OVERDUE").length;
+  const overdueCount = invoices.filter((i) => i.status === "overdue").length;
 
   if (isLoading)
     return (
@@ -418,7 +400,7 @@ const AdminFinance = () => {
                     #{inv.id.substring(0, 8).toUpperCase()}
                   </td>
                   <td className="p-4 font-medium text-gray-900 dark:text-white">
-                    {inv.companyName}
+                    {inv.company_name}
                   </td>
                   <td className="p-4 font-bold text-gray-800 dark:text-gray-200">
                     {Number(inv.amount).toLocaleString("pt-BR", {
@@ -427,27 +409,26 @@ const AdminFinance = () => {
                     })}
                   </td>
                   <td className="p-4 text-gray-600 dark:text-gray-300">
-                    {new Date(inv.dueDate).toLocaleDateString("pt-BR")}
+                    {new Date(inv.due_date).toLocaleDateString("pt-BR")}
                   </td>
                   <td className="p-4">
                     <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                        inv.status === "PAID"
-                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                          : inv.status === "PENDING"
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${inv.status === "paid"
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                        : inv.status === "pending"
                           ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
-                          : inv.status === "OVERDUE"
-                          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                          : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
-                      }`}
+                          : inv.status === "overdue"
+                            ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                            : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                        }`}
                     >
-                      {inv.status === "PAID"
+                      {inv.status === "paid"
                         ? "Pago"
-                        : inv.status === "PENDING"
-                        ? "Pendente"
-                        : inv.status === "OVERDUE"
-                        ? "Atrasado"
-                        : "Cancelado"}
+                        : inv.status === "pending"
+                          ? "Pendente"
+                          : inv.status === "overdue"
+                            ? "Atrasado"
+                            : "Cancelado"}
                     </span>
                   </td>
                   <td className="p-4 text-right">
@@ -517,17 +498,17 @@ const AdminFinance = () => {
                 {editingInvoice ? (
                   <input
                     disabled
-                    className="w-full border bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-400w-full border bg-gray-100 rounded-lg px-3 py-2 text-gray-600"
-                    value={invoiceForm.companyName}
+                    className="w-full border bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-400 font-medium"
+                    value={invoiceForm.company_name}
                   />
                 ) : (
                   <select
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    value={invoiceForm.companyName}
+                    value={invoiceForm.company}
                     onChange={(e) =>
                       setInvoiceForm({
                         ...invoiceForm,
-                        companyName: e.target.value,
+                        company: e.target.value,
                       })
                     }
                   >
@@ -535,7 +516,7 @@ const AdminFinance = () => {
                       Selecione uma empresa
                     </option>
                     {companies.map((c) => (
-                      <option key={c.id} value={c.name}>
+                      <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
@@ -567,11 +548,11 @@ const AdminFinance = () => {
                   <input
                     type="date"
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    value={invoiceForm.dueDate}
+                    value={invoiceForm.due_date}
                     onChange={(e) =>
                       setInvoiceForm({
                         ...invoiceForm,
-                        dueDate: e.target.value,
+                        due_date: e.target.value,
                       })
                     }
                   />
@@ -583,13 +564,12 @@ const AdminFinance = () => {
                   Status
                 </label>
                 <select
-                  className={`w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none font-bold bg-white dark:bg-gray-700 ${
-                    invoiceForm.status === "PAID"
-                      ? "text-green-600 dark:text-green-400"
-                      : invoiceForm.status === "OVERDUE"
+                  className={`w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 outline-none font-bold bg-white dark:bg-gray-700 ${invoiceForm.status === "paid"
+                    ? "text-green-600 dark:text-green-400"
+                    : invoiceForm.status === "overdue"
                       ? "text-red-600 dark:text-red-400"
                       : "text-yellow-600 dark:text-yellow-400"
-                  }`}
+                    }`}
                   value={invoiceForm.status}
                   onChange={(e) =>
                     setInvoiceForm({
@@ -598,10 +578,10 @@ const AdminFinance = () => {
                     })
                   }
                 >
-                  <option value="PENDING">Pendente</option>
-                  <option value="PAID">Pago</option>
-                  <option value="OVERDUE">Atrasado</option>
-                  <option value="CANCELLED">Cancelado</option>
+                  <option value="pending">Pendente</option>
+                  <option value="paid">Pago</option>
+                  <option value="overdue">Atrasado</option>
+                  <option value="cancelled">Cancelado</option>
                 </select>
               </div>
 

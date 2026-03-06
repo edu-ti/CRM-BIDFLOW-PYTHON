@@ -11,27 +11,17 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import { db, auth, appId } from "../../lib/firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 interface Task {
   id: string;
   title: string;
   description?: string;
-  dueDate: string;
+  due_date: string;
   priority: "high" | "medium" | "low";
   status: "completed" | "pending";
-  assignee: string;
+  assignee?: string;
 }
 
 const Tasks = () => {
@@ -46,9 +36,8 @@ const Tasks = () => {
   const [newTask, setNewTask] = useState<Partial<Task>>({
     title: "",
     description: "",
-    dueDate: "",
+    due_date: "",
     priority: "medium",
-    assignee: "Eu",
   });
 
   // Confirm Modal State
@@ -82,64 +71,36 @@ const Tasks = () => {
     setIsConfirmOpen(true);
   };
 
-  // Conectar ao Firestore
+  const loadTasks = async () => {
+    setIsLoading(true);
+    try {
+      const data = await apiFetch("/crm/tasks/");
+      setTasks(data);
+    } catch (error) {
+      console.error("Erro ao buscar tarefas:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const q = query(
-      collection(
-        db,
-        "artifacts",
-        appId,
-        "users",
-        auth.currentUser.uid,
-        "tasks"
-      ),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const fetchedTasks = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Task[];
-        setTasks(fetchedTasks);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Erro ao buscar tarefas:", error);
-        setIsLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
+    loadTasks();
   }, []);
 
   const toggleTaskStatus = async (task: Task) => {
-    if (!auth.currentUser) return;
     try {
-      const taskRef = doc(
-        db,
-        "artifacts",
-        appId,
-        "users",
-        auth.currentUser.uid,
-        "tasks",
-        task.id
-      );
-      await updateDoc(taskRef, {
-        status: task.status === "pending" ? "completed" : "pending",
+      const newStatus = task.status === "pending" ? "completed" : "pending";
+      await apiFetch(`/crm/tasks/${task.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
       });
+      setTasks(tasks.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)));
     } catch (error) {
       console.error("Erro ao atualizar status:", error);
     }
   };
 
   const deleteTask = (id: string) => {
-    if (!auth.currentUser) return;
-
     setConfirmConfig({
       title: "Excluir Tarefa",
       message: "Tem certeza que deseja excluir esta tarefa?",
@@ -148,17 +109,8 @@ const Tasks = () => {
       showCancel: true,
       onConfirm: async () => {
         try {
-          await deleteDoc(
-            doc(
-              db,
-              "artifacts",
-              appId,
-              "users",
-              auth.currentUser!.uid,
-              "tasks",
-              id
-            )
-          );
+          await apiFetch(`/crm/tasks/${id}/`, { method: "DELETE" });
+          setTasks(tasks.filter((t) => t.id !== id));
         } catch (error) {
           console.error("Erro ao deletar tarefa:", error);
           showAlert("Erro", "Erro ao excluir tarefa.", "error");
@@ -172,9 +124,8 @@ const Tasks = () => {
     setNewTask({
       title: task.title,
       description: task.description,
-      dueDate: task.dueDate,
+      due_date: task.due_date ? task.due_date.substring(0, 16) : "",
       priority: task.priority,
-      assignee: task.assignee,
     });
     setEditingId(task.id);
     setIsModalOpen(true);
@@ -184,57 +135,38 @@ const Tasks = () => {
     setNewTask({
       title: "",
       description: "",
-      dueDate: "",
+      due_date: "",
       priority: "medium",
-      assignee: "Eu",
     });
     setEditingId(null);
     setIsModalOpen(true);
   };
 
   const handleSaveTask = async () => {
-    if (!newTask.title || !auth.currentUser) return;
+    if (!newTask.title) return;
 
     try {
-      const tasksRef = collection(
-        db,
-        "artifacts",
-        appId,
-        "users",
-        auth.currentUser.uid,
-        "tasks"
-      );
+      const payload = {
+        title: newTask.title,
+        description: newTask.description || "",
+        due_date: newTask.due_date || null,
+        priority: newTask.priority || "medium",
+      };
 
       if (editingId) {
-        // Editar
-        await updateDoc(doc(tasksRef, editingId), {
-          title: newTask.title,
-          description: newTask.description || "",
-          dueDate: newTask.dueDate || "Sem prazo",
-          priority: newTask.priority || "medium",
-          assignee: newTask.assignee || "Eu",
+        await apiFetch(`/crm/tasks/${editingId}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
         });
       } else {
-        // Criar
-        await addDoc(tasksRef, {
-          title: newTask.title,
-          description: newTask.description || "",
-          dueDate: newTask.dueDate || "Sem prazo",
-          priority: newTask.priority || "medium",
-          assignee: newTask.assignee || "Eu",
-          status: "pending",
-          createdAt: new Date().toISOString(),
+        await apiFetch("/crm/tasks/", {
+          method: "POST",
+          body: JSON.stringify({ ...payload, status: "pending" }),
         });
       }
 
       setIsModalOpen(false);
-      setNewTask({
-        title: "",
-        description: "",
-        dueDate: "",
-        priority: "medium",
-        assignee: "Eu",
-      });
+      loadTasks();
       setEditingId(null);
     } catch (error) {
       console.error("Erro ao salvar tarefa:", error);
@@ -263,6 +195,22 @@ const Tasks = () => {
     return matchesFilter && matchesSearch;
   });
 
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "Sem prazo";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleString("pt-PT", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -288,31 +236,28 @@ const Tasks = () => {
           <div className="flex gap-2 p-1 bg-gray-200 dark:bg-gray-700 rounded-lg">
             <button
               onClick={() => setFilter("all")}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                filter === "all"
-                  ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-              }`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${filter === "all"
+                ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                }`}
             >
               Todas
             </button>
             <button
               onClick={() => setFilter("pending")}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                filter === "pending"
-                  ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-              }`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${filter === "pending"
+                ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                }`}
             >
               Pendentes
             </button>
             <button
               onClick={() => setFilter("completed")}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                filter === "completed"
-                  ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-              }`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${filter === "completed"
+                ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                }`}
             >
               Concluídas
             </button>
@@ -343,19 +288,17 @@ const Tasks = () => {
             filteredTasks.map((task) => (
               <div
                 key={task.id}
-                className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition flex items-start gap-4 group ${
-                  task.status === "completed"
-                    ? "opacity-60 bg-gray-50 dark:bg-gray-900/50"
-                    : ""
-                }`}
+                className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition flex items-start gap-4 group ${task.status === "completed"
+                  ? "opacity-60 bg-gray-50 dark:bg-gray-900/50"
+                  : ""
+                  }`}
               >
                 <button
                   onClick={() => toggleTaskStatus(task)}
-                  className={`mt-1 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition ${
-                    task.status === "completed"
-                      ? "bg-green-500 border-green-500 text-white"
-                      : "border-gray-400 dark:border-gray-500 text-transparent hover:border-indigo-500 dark:hover:border-indigo-400"
-                  }`}
+                  className={`mt-1 flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center transition ${task.status === "completed"
+                    ? "bg-green-500 border-green-500 text-white"
+                    : "border-gray-400 dark:border-gray-500 text-transparent hover:border-indigo-500 dark:hover:border-indigo-400"
+                    }`}
                 >
                   <CheckCircle2
                     size={14}
@@ -369,11 +312,10 @@ const Tasks = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
                     <h3
-                      className={`font-semibold text-gray-900 dark:text-white ${
-                        task.status === "completed"
-                          ? "line-through text-gray-500 dark:text-gray-500"
-                          : ""
-                      }`}
+                      className={`font-semibold text-gray-900 dark:text-white ${task.status === "completed"
+                        ? "line-through text-gray-500 dark:text-gray-500"
+                        : ""
+                        }`}
                     >
                       {task.title}
                     </h3>
@@ -386,8 +328,8 @@ const Tasks = () => {
                         {task.priority === "high"
                           ? "Alta"
                           : task.priority === "medium"
-                          ? "Média"
-                          : "Baixa"}
+                            ? "Média"
+                            : "Baixa"}
                       </span>
                       {task.status === "completed" && (
                         <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
@@ -404,20 +346,16 @@ const Tasks = () => {
                   )}
 
                   <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                    <div
-                      className={`flex items-center gap-1 ${
-                        task.dueDate.includes("Hoje")
-                          ? "text-red-500 dark:text-red-400 font-medium"
-                          : ""
-                      }`}
-                    >
-                      <Calendar size={14} />
-                      {task.dueDate}
-                    </div>
                     <div className="flex items-center gap-1">
-                      <User size={14} />
-                      {task.assignee}
+                      <Calendar size={14} />
+                      {formatDate(task.due_date)}
                     </div>
+                    {task.assignee && (
+                      <div className="flex items-center gap-1">
+                        <User size={14} />
+                        {task.assignee}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -510,12 +448,11 @@ const Tasks = () => {
                       size={16}
                     />
                     <input
-                      type="text"
+                      type="datetime-local"
                       className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900 dark:text-white bg-white dark:bg-gray-700"
-                      placeholder="Hoje, 14:00"
-                      value={newTask.dueDate}
+                      value={newTask.due_date}
                       onChange={(e) =>
-                        setNewTask({ ...newTask, dueDate: e.target.value })
+                        setNewTask({ ...newTask, due_date: e.target.value })
                       }
                     />
                   </div>
@@ -538,27 +475,6 @@ const Tasks = () => {
                     <option value="medium">Média</option>
                     <option value="high">Alta</option>
                   </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Responsável
-                </label>
-                <div className="relative">
-                  <User
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                    size={16}
-                  />
-                  <input
-                    type="text"
-                    className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-gray-900 dark:text-white bg-white dark:bg-gray-700"
-                    placeholder="Nome do responsável"
-                    value={newTask.assignee}
-                    onChange={(e) =>
-                      setNewTask({ ...newTask, assignee: e.target.value })
-                    }
-                  />
                 </div>
               </div>
             </div>

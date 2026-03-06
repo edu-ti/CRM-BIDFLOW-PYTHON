@@ -1,6 +1,72 @@
 version: '3.3'
 
 services:
+  # Base de Dados Relacional para o Django (PostgreSQL)
+  db:
+    container_name: bidflow_db
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_DB=${DB_NAME:-bidflow_db}
+      - POSTGRES_USER=${DB_USER:-bidflow_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-bidflow_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Backend Django (Gunicorn)
+  backend:
+    container_name: bidflow_backend
+    build:
+      context: ./django_backend
+    restart: always
+    environment:
+      - DEBUG=False
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=${DB_NAME:-bidflow_db}
+      - DB_USER=${DB_USER:-bidflow_user}
+      - DB_PASSWORD=${DB_PASSWORD:-bidflow_pass}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - SECRET_KEY=${SECRET_KEY}
+    depends_on:
+      - db
+    volumes:
+      - django_static:/app/static
+      - ./django_backend/firebase-key.json:/app/firebase-key.json
+
+  # Frontend React (Build + Nginx Proxy com SSL)
+  frontend:
+    container_name: bidflow_frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: always
+    depends_on:
+      - backend
+    volumes:
+      - django_static:/app/static
+      - django_media:/app/media
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
+      - webroot_path:/var/www/certbot
+
+  # Certbot para SSL automático
+  certbot:
+    container_name: bidflow_certbot
+    image: certbot/certbot
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
+      - webroot_path:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # Evolution API (WhatsApp Gateway - Existente)
   evolution-api:
     container_name: evolution_api
     image: atendai/evolution-api:v2.1.1
@@ -12,7 +78,6 @@ services:
       - DATABASE_PROVIDER=mysql
       - DATABASE_CONNECTION_URI=mysql://u540193243_frpe:g3st@03Du4rd0@mysql:3306/u540193243_frpe_crm_db
       - DATABASE_CLIENT_NAME=evolution_exchange
-      # Configuração do Redis (Novo!)
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://redis:6379/0
       - CACHE_REDIS_PREFIX=evolution
@@ -35,15 +100,20 @@ services:
     volumes:
       - evolution_mysql:/var/lib/mysql
 
-  # Serviço Redis (Novo!)
   redis:
     container_name: evolution_redis
     image: redis:alpine
-    restart: always # Comando forçando IPv4 e proteção desativada para rede interna
+    restart: always
     command: redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no
     volumes:
       - evolution_redis:/data
 
 volumes:
+  postgres_data:
+  django_static:
+  django_media:
+  certbot_etc:
+  certbot_var:
+  webroot_path:
   evolution_mysql:
   evolution_redis:

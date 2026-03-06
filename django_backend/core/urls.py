@@ -26,4 +26,6 @@ urlpatterns = [
     path('api/crm/', include('crm.urls')),
     path('api/inventory/', include('inventory.urls')),
     path('api/users/', include('users.urls')),
+    path('api/', include('communications.urls')),
+    path('api/master/', include('saas_master.urls')),
 ]

@@ -1,3 +1,7 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
 """
 Django settings for core project.
 
@@ -10,22 +14,23 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
-from pathlib import Path
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-0(^u^no==wl26b59%2-xar!!!8urzuezftzv3@8@u(q5gegt%@'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-0(^u^no==wl26b59%2-xar!!!8urzuezftzv3@8@u(q5gegt%@')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -42,6 +47,8 @@ INSTALLED_APPS = [
     'crm', # Nossa nova app para gerir os dados do CRM
     'inventory',
     'users',
+    'communications',
+    'saas_master',
 ]
 
 MIDDLEWARE = [
@@ -78,12 +85,26 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.sqlite3')
+
+if DB_ENGINE == 'django.db.backends.postgresql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME', 'bidflow_db'),
+            'USER': os.environ.get('DB_USER', 'bidflow_user'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', 'bidflow_pass'),
+            'HOST': os.environ.get('DB_HOST', 'db'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -108,9 +129,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'pt-br'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Sao_Paulo'
 
 USE_I18N = True
 
@@ -121,17 +142,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Permite que o seu React comunique com o Django
-CORS_ALLOW_ALL_ORIGINS = True
+MEDIA_URL = 'media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:58306",
-]
+# CORS
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+if not DEBUG:
+    CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')
 
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -145,17 +164,15 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-import os
+# Firebase Admin
 import firebase_admin
 from firebase_admin import credentials
 
-# Caminho para o ficheiro JSON que descarregou
-FIREBASE_KEY_PATH = os.path.join(BASE_DIR, 'firebase-key.json')
+FIREBASE_KEY_PATH = os.environ.get('FIREBASE_KEY_PATH', os.path.join(BASE_DIR, 'firebase-key.json'))
 
-# Inicializa o Firebase Admin
 if not firebase_admin._apps:
     try:
         cred = credentials.Certificate(FIREBASE_KEY_PATH)
         firebase_admin.initialize_app(cred)
-    except FileNotFoundError:
-        print(f"AVISO: Ficheiro {FIREBASE_KEY_PATH} não encontrado. Firebase não foi inicializado.")
+    except Exception as e:
+        print(f"AVISO: Falha ao inicializar Firebase ({FIREBASE_KEY_PATH}): {e}")

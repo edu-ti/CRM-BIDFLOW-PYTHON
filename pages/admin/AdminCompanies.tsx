@@ -21,17 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { db, appId } from "../../lib/firebase";
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-} from "firebase/firestore";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 interface Company {
@@ -39,33 +29,41 @@ interface Company {
   name: string;
   domain: string;
   responsible: string;
-  email: string;
+  contact_email: string;
   phone: string;
   plan: string;
-  status: "active" | "trial" | "paused" | "overdue";
-  renewal: string;
-  mrr: string;
-  limits: { users: number; msgs: number };
+  plan_name?: string;
+  tax_id: string;
+  status: "active" | "inactive" | "pending";
+  created_at: string;
+}
+
+interface Plan {
+  id: string;
+  name: string;
+  price_monthly: number;
 }
 
 const AdminCompanies = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   // Modal de Edição
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Company>>({
     name: "",
     domain: "",
     responsible: "",
-    email: "",
+    contact_email: "",
+    tax_id: "",
     phone: "",
-    plan: "Starter",
+    plan: "",
     status: "active",
-    limits: { users: 1, msgs: 1000 },
   });
 
   // Estado do Modal de Confirmação
@@ -80,34 +78,29 @@ const AdminCompanies = () => {
     title: "",
     message: "",
     type: "info",
-    onConfirm: () => {},
+    onConfirm: () => { },
     confirmText: "Confirmar",
   });
 
-  // Firestore Sync
+  // Load data from Django
   useEffect(() => {
-    const q = query(
-      collection(db, "artifacts", appId, "companies"),
-      orderBy("name")
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const fetched = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Company[];
-        setCompanies(fetched);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Erro de permissão ou conexão:", error);
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const [companiesData, plansData] = await Promise.all([
+          apiFetch("/master/companies/"),
+          apiFetch("/master/plans/"),
+        ]);
+        setCompanies(companiesData);
+        setPlans(plansData);
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error);
+      } finally {
         setIsLoading(false);
       }
-    );
+    };
 
-    return () => unsubscribe();
+    loadData();
   }, []);
 
   const openModal = (company?: Company) => {
@@ -120,11 +113,11 @@ const AdminCompanies = () => {
         name: "",
         domain: "",
         responsible: "",
-        email: "",
+        contact_email: "",
+        tax_id: "",
         phone: "",
-        plan: "Starter",
+        plan: plans.length > 0 ? plans[0].id : "",
         status: "active",
-        limits: { users: 1, msgs: 1000 },
       });
     }
     setIsModalOpen(true);
@@ -145,62 +138,59 @@ const AdminCompanies = () => {
   };
 
   const handleSave = async () => {
-    if (!formData.name || !formData.email) {
-      alert("Preencha os campos obrigatórios");
+    if (!formData.name || !formData.contact_email || !formData.tax_id) {
+      alert("Preencha os campos obrigatórios (Nome, Email e CNPJ/NIF)");
       return;
     }
 
+    setIsSaving(true);
     try {
-      const companiesRef = collection(db, "artifacts", appId, "companies");
-      const mrrValue = getPlanPrice(formData.plan || "Starter");
-
-      const companyData = {
+      const payload = {
         name: formData.name,
-        domain:
-          formData.domain ||
-          `${formData.name?.toLowerCase().replace(/\s/g, "")}.bidflow.com`,
-        responsible: formData.responsible || "Admin",
-        email: formData.email,
-        phone: formData.phone || "",
-        plan: formData.plan || "Starter",
-        status: formData.status || "active",
-        renewal: new Date().toLocaleDateString(),
-        mrr: mrrValue,
-        limits: formData.limits || { users: 1, msgs: 1000 },
-        updatedAt: new Date().toISOString(),
+        domain: formData.domain || `${formData.name?.toLowerCase().replace(/\s/g, "")}.bidflow.com`,
+        responsible: formData.responsible,
+        contact_email: formData.contact_email,
+        tax_id: formData.tax_id,
+        phone: formData.phone,
+        plan: formData.plan || null,
+        status: formData.status,
       };
 
       if (editingId) {
-        await updateDoc(doc(companiesRef, editingId), companyData);
-      } else {
-        await addDoc(companiesRef, {
-          ...companyData,
-          createdAt: new Date().toISOString(),
+        const updated = await apiFetch(`/master/companies/${editingId}/`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
         });
+        setCompanies(prev => prev.map(c => c.id === editingId ? updated : c));
+      } else {
+        const created = await apiFetch("/master/companies/", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setCompanies(prev => [...prev, created]);
       }
       setIsModalOpen(false);
     } catch (error: any) {
       console.error("Erro ao salvar empresa:", error);
-      alert(
-        `Erro ao salvar: ${
-          error.message || "Verifique o console (F12) para detalhes"
-        }`
-      );
+      alert("Erro ao salvar empresa.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = (id: string, name: string) => {
     setConfirmConfig({
       title: "Excluir Empresa",
-      message: `Tem certeza que deseja excluir a empresa "${name}"? Todos os dados (usuários, conversas, configurações) serão perdidos permanentemente.`,
+      message: `Tem certeza que deseja excluir a empresa "${name}"? Todos os dados serão perdidos permanentemente.`,
       type: "error",
       confirmText: "Excluir Definitivamente",
       onConfirm: async () => {
         try {
-          await deleteDoc(doc(db, "artifacts", appId, "companies", id));
+          await apiFetch(`/master/companies/${id}/`, { method: "DELETE" });
+          setCompanies(prev => prev.filter(c => c.id !== id));
         } catch (error: any) {
           console.error("Erro ao excluir:", error);
-          alert(`Erro ao excluir: ${error.message}`);
+          alert("Erro ao excluir empresa.");
         }
       },
     });
@@ -210,12 +200,15 @@ const AdminCompanies = () => {
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     try {
-      await updateDoc(doc(db, "artifacts", appId, "companies", id), {
-        status: currentStatus === "active" ? "paused" : "active",
+      const newStatus = currentStatus === "active" ? "inactive" : "active";
+      const updated = await apiFetch(`/master/companies/${id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
       });
+      setCompanies(prev => prev.map(c => c.id === id ? updated : c));
     } catch (error: any) {
       console.error("Erro ao alterar status:", error);
-      alert(`Erro ao alterar status: ${error.message}`);
+      alert("Erro ao alterar status.");
     }
     setActiveMenu(null);
   };
@@ -223,7 +216,7 @@ const AdminCompanies = () => {
   const filteredCompanies = companies.filter(
     (c) =>
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchTerm.toLowerCase())
+      c.contact_email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -315,43 +308,39 @@ const AdminCompanies = () => {
                           </span>
                           <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                             <Mail size={12} className="text-gray-400" />{" "}
-                            {c.email}
+                            {c.contact_email}
                           </span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <span
                           className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide
-                            ${
-                              c.plan === "Enterprise"
-                                ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
-                                : c.plan === "Pro"
+                            ${c.plan === "Enterprise"
+                              ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                              : c.plan === "Pro"
                                 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                                 : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
                             }`}
                         >
-                          {c.plan}
+                          {c.plan_name || "Nenhum"}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
-                            c.status === "active"
+                          className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${c.status === "active"
                               ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
                               : c.status === "paused"
-                              ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300"
-                              : c.status === "overdue"
-                              ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
-                              : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
-                          }`}
+                                ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300"
+                                : c.status === "overdue"
+                                  ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
+                                  : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
+                            }`}
                         >
                           {c.status === "active"
                             ? "Ativo"
-                            : c.status === "paused"
-                            ? "Pausado"
-                            : c.status === "overdue"
-                            ? "Inadimplente"
-                            : "Trial"}
+                            : c.status === "inactive"
+                              ? "Inativo"
+                              : "Pendente"}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -361,11 +350,10 @@ const AdminCompanies = () => {
                               e.stopPropagation();
                               setActiveMenu(activeMenu === c.id ? null : c.id);
                             }}
-                            className={`p-2 rounded-lg transition ${
-                              activeMenu === c.id
+                            className={`p-2 rounded-lg transition ${activeMenu === c.id
                                 ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
                                 : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            }`}
+                              }`}
                           >
                             <MoreVertical size={18} />
                           </button>
@@ -397,11 +385,10 @@ const AdminCompanies = () => {
                                   onClick={() =>
                                     handleToggleStatus(c.id, c.status)
                                   }
-                                  className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                                    c.status === "active"
+                                  className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 ${c.status === "active"
                                       ? "text-orange-600 dark:text-orange-400"
                                       : "text-green-600 dark:text-green-400"
-                                  }`}
+                                    }`}
                                 >
                                   {c.status === "active" ? (
                                     <Pause size={16} />
@@ -526,17 +513,31 @@ const AdminCompanies = () => {
                     <input
                       type="email"
                       className="w-full pl-9 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder-gray-400 dark:placeholder-gray-400"
-                      defaultValue={formData.email}
+                      defaultValue={formData.contact_email}
                       onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
+                        setFormData({ ...formData, contact_email: e.target.value })
                       }
                       placeholder="admin@empresa.com"
                     />
                   </div>
                 </div>
 
-                {/* Telefone (Row 3) */}
-                <div className="col-span-12">
+                {/* CNPJ e Telefone (Row 3) */}
+                <div className="col-span-12 md:col-span-6">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    CNPJ / NIF *
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder-gray-400 dark:placeholder-gray-400"
+                    defaultValue={formData.tax_id}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tax_id: e.target.value })
+                    }
+                    placeholder="00.000.000/0000-00"
+                  />
+                </div>
+                <div className="col-span-12 md:col-span-6">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Telefone / WhatsApp
                   </label>
@@ -572,9 +573,10 @@ const AdminCompanies = () => {
                       setFormData({ ...formData, plan: e.target.value })
                     }
                   >
-                    <option value="Starter">Starter</option>
-                    <option value="Pro">Pro</option>
-                    <option value="Enterprise">Enterprise</option>
+                    <option value="">Selecione um plano</option>
+                    {plans.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="col-span-12 md:col-span-6">
@@ -592,51 +594,12 @@ const AdminCompanies = () => {
                     }
                   >
                     <option value="active">Ativo</option>
-                    <option value="trial">Trial (Teste)</option>
-                    <option value="paused">Pausado</option>
-                    <option value="overdue">Inadimplente</option>
+                    <option value="inactive">Inativo</option>
+                    <option value="pending">Pendente</option>
                   </select>
                 </div>
 
-                {/* Limites (Row 5) */}
-                <div className="col-span-12 md:col-span-6">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Limite de Usuários
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                    defaultValue={formData.limits?.users}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        limits: {
-                          ...formData.limits!,
-                          users: parseInt(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </div>
-                <div className="col-span-12 md:col-span-6">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Limite de Mensagens
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2.5 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                    defaultValue={formData.limits?.msgs}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        limits: {
-                          ...formData.limits!,
-                          msgs: parseInt(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </div>
+
               </div>
             </div>
 

@@ -1,26 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { RefreshCw, Power, Smartphone, Loader2 } from "lucide-react";
-import { db, appId } from "../../lib/firebase";
-import {
-  collection,
-  onSnapshot,
-  query,
-  collectionGroup,
-  updateDoc,
-  getDocs,
-} from "firebase/firestore";
+import { apiFetch } from "../../lib/api";
 import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 interface WhatsAppInstance {
   id: string;
-  companyId: string;
-  companyName?: string; // Nome da empresa (join manual)
-  name: string; // Nome da instância (ex: Vendas)
+  company: string;
+  company_name?: string;
+  name: string;
   status: "CONNECTED" | "DISCONNECTED" | "QRCODE" | "PAIRING";
-  phoneNumber?: string;
-  batteryLevel?: number;
-  lastSync?: string;
-  ref: any; // Referência do documento para update
+  phone_number?: string;
+  battery_level?: number;
+  last_sync?: string;
 }
 
 const AdminInstances = () => {
@@ -41,7 +32,7 @@ const AdminInstances = () => {
     title: "",
     message: "",
     type: "info",
-    onConfirm: () => {},
+    onConfirm: () => { },
     confirmText: "Confirmar",
   });
 
@@ -65,56 +56,21 @@ const AdminInstances = () => {
     setIsConfirmOpen(true);
   };
 
-  // 1. Carregar nomes das empresas para exibir nos cards (Mapeamento ID -> Nome)
+  // 1. Carregar Dados do Django
   useEffect(() => {
-    const fetchCompanies = async () => {
+    const loadData = async () => {
+      setIsLoading(true);
       try {
-        // Busca única das empresas para criar o dicionário
-        const q = query(collection(db, "artifacts", appId, "companies"));
-        const snapshot = await getDocs(q);
-        const map: Record<string, string> = {};
-        snapshot.forEach((doc) => {
-          map[doc.id] = doc.data().name;
-        });
-        setCompaniesMap(map);
+        const data = await apiFetch("/master/instances/");
+        setInstances(data);
       } catch (e) {
-        console.error("Erro ao carregar empresas:", e);
+        console.error("Erro ao buscar instâncias:", e);
+      } finally {
+        setIsLoading(false);
       }
     };
-    fetchCompanies();
-  }, []);
 
-  // 2. Carregar TODAS as instâncias (Collection Group Query)
-  useEffect(() => {
-    // 'instances' é o nome da sub-coleção dentro de cada empresa
-    // collectionGroup busca em TODAS as sub-coleções com esse nome
-    const q = query(collectionGroup(db, "instances"));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const fetchedInstances = snapshot.docs.map((doc) => {
-          // O pai do documento é a coleção 'instances', o pai da coleção é o documento da Empresa
-          // Path: companies/{COMPANY_ID}/instances/{INSTANCE_ID}
-          const parentCompanyId = doc.ref.parent.parent?.id || "";
-
-          return {
-            id: doc.id,
-            companyId: parentCompanyId,
-            ...doc.data(),
-            ref: doc.ref,
-          } as WhatsAppInstance;
-        });
-        setInstances(fetchedInstances);
-        setIsLoading(false);
-      },
-      (error) => {
-        console.error("Erro ao buscar instâncias:", error);
-        setIsLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
+    loadData();
   }, []);
 
   // 3. Ações
@@ -124,13 +80,22 @@ const AdminInstances = () => {
       `Deseja reiniciar a conexão de ${inst.name}? Isso pode causar uma breve interrupção.`,
       async () => {
         try {
-          // Simula reinício: Pairing -> Connected
-          await updateDoc(inst.ref, { status: "PAIRING" });
+          const updated = await apiFetch(`/master/instances/${inst.id}/`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: "PAIRING" }),
+          });
+          setInstances(prev => prev.map(i => i.id === inst.id ? updated : i));
+
+          // Simula conclusão do reinício após 2s
           setTimeout(async () => {
-            await updateDoc(inst.ref, {
-              status: "CONNECTED",
-              lastSync: new Date().toISOString(),
+            const final = await apiFetch(`/master/instances/${inst.id}/`, {
+              method: "PATCH",
+              body: JSON.stringify({
+                status: "CONNECTED",
+                last_sync: new Date().toISOString(),
+              }),
             });
+            setInstances(prev => prev.map(i => i.id === inst.id ? final : i));
           }, 2000);
         } catch (e) {
           console.error(e);
@@ -146,11 +111,15 @@ const AdminInstances = () => {
       `Deseja realmente desconectar ${inst.name}? Isso irá parar o envio de mensagens imediatamente.`,
       async () => {
         try {
-          await updateDoc(inst.ref, {
-            status: "DISCONNECTED",
-            phoneNumber: "",
-            batteryLevel: 0,
+          const updated = await apiFetch(`/master/instances/${inst.id}/`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: "DISCONNECTED",
+              phone_number: "",
+              battery_level: 0,
+            }),
           });
+          setInstances(prev => prev.map(i => i.id === inst.id ? updated : i));
         } catch (e) {
           console.error(e);
         }
@@ -198,10 +167,7 @@ const AdminInstances = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {instances.map((inst) => {
-            const companyName =
-              companiesMap[inst.companyId] || "Empresa Desconhecida";
             const isOnline = inst.status === "CONNECTED";
-
             return (
               <div
                 key={inst.id}
@@ -209,27 +175,25 @@ const AdminInstances = () => {
               >
                 {/* Borda Status Lateral */}
                 <div
-                  className={`absolute top-0 left-0 w-1.5 h-full ${
-                    isOnline ? "bg-green-500" : "bg-red-500"
-                  }`}
+                  className={`absolute top-0 left-0 w-1.5 h-full ${isOnline ? "bg-green-500" : "bg-red-500"
+                    }`}
                 ></div>
 
                 {/* Header do Card */}
                 <div className="flex justify-between items-start mb-6 pl-2">
                   <div className="flex items-center gap-3">
                     <div
-                      className={`p-2.5 rounded-lg ${
-                        isOnline
-                          ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-                          : "bg-red-100 ark:bg-red-900/30 text-red-600 dark:text-red-400"
-                      }`}
+                      className={`p-2.5 rounded-lg ${isOnline
+                        ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                        : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                        }`}
                     >
                       <Smartphone size={24} />
                     </div>
                     <div>
                       {/* Nome da Empresa em destaque */}
                       <h3 className="font-bold text-gray-900 dark:text-white text-base">
-                        {companyName}
+                        {inst.company_name || "Empresa Desconhecida"}
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
                         ID: {inst.id.substring(0, 8)}...
@@ -237,13 +201,12 @@ const AdminInstances = () => {
                     </div>
                   </div>
                   <span
-                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                      isOnline
-                        ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300"
-                        : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
-                    }`}
+                    className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${isOnline
+                      ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300"
+                      : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
+                      }`}
                   >
-                    {isOnline ? "ONLINE" : "OFFLINE"}
+                    {inst.status}
                   </span>
                 </div>
 
@@ -254,7 +217,7 @@ const AdminInstances = () => {
                       Número
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      {inst.phoneNumber || "-"}
+                      {inst.phone_number || "-"}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
@@ -262,7 +225,7 @@ const AdminInstances = () => {
                       Bateria
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white flex items-center gap-1">
-                      {inst.batteryLevel ? `${inst.batteryLevel}%` : "-"}
+                      {inst.battery_level ? `${inst.battery_level}%` : "-"}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
@@ -270,7 +233,7 @@ const AdminInstances = () => {
                       Sincronização
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      {formatTimeAgo(inst.lastSync)}
+                      {formatTimeAgo(inst.last_sync)}
                     </span>
                   </div>
                 </div>
