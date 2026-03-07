@@ -47,3 +47,10 @@ Aceda à VPS via SSH e execute:
   # Adicione a linha:
   0 3 * * * /path/to/project/scripts/backup_db.sh >> /var/log/bidflow_backup.log 2>&1
   ```
+
+## 7. Monitorização (Sentry)
+- [ ] Criar um projeto no **Sentry.io** (um para Django e outro para React).
+- [ ] Adicionar as seguintes variáveis ao seu `.env`:
+  - `SENTRY_DSN`: O DSN do projeto Django.
+  - `VITE_SENTRY_DSN`: O DSN do projeto React.
+- [ ] Reiniciar os contentores para aplicar as mudanças: `./deploy.sh`.

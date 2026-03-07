@@ -1,4 +1,4 @@
-
+import { apiFetch } from "./api";
 
 // CONFIGURAÇÕES
 const API_URL = "http://localhost:8080";
@@ -82,22 +82,19 @@ export const WhatsAppService = {
     number: string,
     text: string
   ): Promise<any> {
-    const cleanName = instanceName.replace(/[^a-zA-Z0-9]/g, "");
-    const cleanNumber = number.replace(/\D/g, "");
-
-    const response = await fetch(`${API_URL}/message/sendText/${cleanName}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: API_KEY,
-      },
-      body: JSON.stringify({
-        number: cleanNumber,
-        options: { delay: 1200, presence: "composing", linkPreview: true },
-        textMessage: { text: text },
-      }),
-    });
-    return await response.json();
+    try {
+      const response = await apiFetch("/communications/send-message/", {
+        method: "POST",
+        body: JSON.stringify({
+          phone: number,
+          text: text,
+        }),
+      });
+      return response;
+    } catch (error) {
+      console.error("[WA] Erro ao enviar mensagem via Django backend:", error);
+      throw error;
+    }
   },
 
   async fetchInstanceStatus(

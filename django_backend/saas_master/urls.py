@@ -4,7 +4,9 @@ from .views import (
     MasterCompanyViewSet, 
     MasterPlanViewSet, 
     MasterInstanceViewSet, 
-    MasterFinanceViewSet
+    MasterFinanceViewSet,
+    CreateStripeCheckoutSessionView,
+    StripeWebhookView
 )
 
 from users.views import MasterUserViewSet
@@ -17,5 +19,8 @@ router.register(r'finance', MasterFinanceViewSet, basename='master-finance')
 router.register(r'users', MasterUserViewSet, basename='master-user')
 
 urlpatterns = [
+    path('checkout/', CreateStripeCheckoutSessionView.as_view(), name='stripe-checkout'),
+    path('webhooks/stripe/', StripeWebhookView.as_view(), name='stripe-webhook'),
     path('', include(router.urls)),
 ]
+

@@ -33,6 +33,11 @@ class Company(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     plan = models.ForeignKey(Plan, on_delete=models.SET_NULL, null=True, blank=True, related_name='companies')
     
+    # Billing / Stripe
+    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
+    stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
+    subscription_status = models.CharField(max_length=50, default='active', help_text="active, past_due, canceled, trialing")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,379 +1,212 @@
-import React, { useState, useEffect } from "react";
-import { StatCard } from "../../components/StatCard";
+import React, { useState } from "react";
 import {
-  BarChart3,
-  TrendingUp,
-  Users,
-  MessageCircle,
-  Calendar,
-  Printer,
-  X,
-  Check,
+  FileText,
+  FileSpreadsheet,
+  Download,
+  Calendar as CalendarIcon,
   Loader2,
   AlertCircle,
+  BarChart,
+  Truck,
+  CreditCard,
 } from "lucide-react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
-import { db, auth, appId } from "../../lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  Timestamp,
-} from "firebase/firestore";
-
-const COLORS = ["#10b981", "#6366f1", "#f59e0b", "#9ca3af"];
+import { apiFetchBlob } from "../../lib/api";
+import ConfirmModal, { ConfirmModalType } from "../../components/ConfirmModal";
 
 const Reports = () => {
-  const [dateRange, setDateRange] = useState<"7d" | "30d" | "3m">("30d");
-  const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState({
-    leads: 0,
-    leadsChange: 0,
-    msgs: 0,
-    conversion: "0%",
-    cost: "R$ 0,00",
+  const [activeTab, setActiveTab] = useState<"finance" | "sales" | "inventory">("finance");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const [loadingExcel, setLoadingExcel] = useState(false);
+
+  // Modal State
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    message: string;
+    type: ConfirmModalType;
+  }>({
+    title: "",
+    message: "",
+    type: "info",
   });
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [sourceData, setSourceData] = useState<any[]>([]);
 
-  // --- LÓGICA DE TEMA ---
-  const [isDark, setIsDark] = useState(
-    document.documentElement.classList.contains("dark")
-  );
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  const chartTheme = {
-    grid: isDark ? "#374151" : "#f3f4f6",
-    text: isDark ? "#9ca3af" : "#6b7280",
-    tooltipBg: isDark ? "#1f2937" : "#ffffff",
-    tooltipBorder: isDark ? "#374151" : "#e5e7eb",
-    tooltipText: isDark ? "#f3f4f6" : "#1f293b",
-  };
-  // ----------------------
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!auth.currentUser) return;
-      setIsLoading(true);
-      const uid = auth.currentUser.uid;
-
-      try {
-        const now = new Date();
-        const pastDate = new Date();
-        if (dateRange === "7d") pastDate.setDate(now.getDate() - 7);
-        if (dateRange === "30d") pastDate.setDate(now.getDate() - 30);
-        if (dateRange === "3m") pastDate.setDate(now.getDate() - 90);
-
-        const contactsRef = collection(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          uid,
-          "contacts"
-        );
-        const contactsSnap = await getDocs(contactsRef);
-
-        const allContacts = contactsSnap.docs.map((d) => ({
-          ...d.data(),
-          createdAt: d.data().createdAt,
-        }));
-
-        const filteredContacts = allContacts.filter((c: any) => {
-          const created = new Date(c.createdAt);
-          return created >= pastDate;
-        });
-
-        const dealsRef = collection(
-          db,
-          "artifacts",
-          appId,
-          "users",
-          uid,
-          "deals"
-        );
-        const dealsSnap = await getDocs(dealsRef);
-        const allDeals = dealsSnap.docs.map((d) => d.data());
-        const wonDeals = allDeals.filter((d: any) => d.stageId === "s4");
-
-        const totalLeads = filteredContacts.length;
-        const conversionRate =
-          totalLeads > 0
-            ? ((wonDeals.length / totalLeads) * 100).toFixed(1)
-            : "0";
-
-        setStats({
-          leads: totalLeads,
-          leadsChange: 0,
-          msgs: 0,
-          conversion: `${conversionRate}%`,
-          cost: "R$ 0,00",
-        });
-
-        const dailyData: Record<string, number> = {};
-        filteredContacts.forEach((c: any) => {
-          const dateKey = new Date(c.createdAt).toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-          });
-          dailyData[dateKey] = (dailyData[dateKey] || 0) + 1;
-        });
-
-        const chart = [];
-        for (let d = new Date(pastDate); d <= now; d.setDate(d.getDate() + 1)) {
-          const key = d.toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-          });
-          chart.push({
-            name: key,
-            leads: dailyData[key] || 0,
-            msgs: Math.floor(Math.random() * 10),
-          });
-        }
-        setChartData(chart);
-
-        setSourceData([
-          {
-            name: "WhatsApp",
-            value: totalLeads > 0 ? totalLeads : 1,
-            color: "#10b981",
-          },
-          { name: "Manual", value: 0, color: "#6366f1" },
-        ]);
-      } catch (error) {
-        console.error("Erro ao carregar relatório:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [dateRange]);
-
-  const handlePrint = () => {
-    setTimeout(() => window.print(), 100);
+  const showAlert = (title: string, message: string, type: ConfirmModalType = "info") => {
+    setConfirmConfig({ title, message, type });
+    setIsConfirmOpen(true);
   };
 
-  const getRangeButtonClass = (range: string) => {
-    return dateRange === range
-      ? "px-3 py-1.5 text-sm font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 rounded-md shadow-sm transition-all"
-      : "px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-all";
+  const handleDownload = async (format: "pdf" | "excel") => {
+    if (format === "pdf") setLoadingPdf(true);
+    else setLoadingExcel(true);
+
+    try {
+      const endpointMap: Record<string, string> = {
+        finance: "/reports/finance/",
+        sales: "/reports/sales/",
+        inventory: "/reports/inventory/",
+      };
+
+      const queryParams = new URLSearchParams({ format });
+      if (startDate) queryParams.append("start_date", startDate);
+      if (endDate) queryParams.append("end_date", endDate);
+
+      const url = `${endpointMap[activeTab]}?${queryParams.toString()}`;
+
+      const blob = await apiFetchBlob(url, { method: "GET" });
+
+      // Criação de URL temporário
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      const extension = format === "pdf" ? "pdf" : "xlsx";
+      a.download = `relatorio_${activeTab}_${new Date().toISOString().split("T")[0]}.${extension}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      showAlert("Sucesso", `O relatório em ${format.toUpperCase()} foi transferido.`, "success");
+    } catch (e: any) {
+      console.error(e);
+      showAlert("Erro", "Não foi possível gerar o relatório. Verifique se o backend está a correr corretamente.", "error");
+    } finally {
+      setLoadingPdf(false);
+      setLoadingExcel(false);
+    }
   };
 
-  if (isLoading)
+  const renderTabContent = () => {
+    let title = "";
+    let description = "";
+
+    if (activeTab === "finance") {
+      title = "Relatório Financeiro";
+      description = "Extraia todas as movimentações de contas a receber, contas a pagar, valores e categorias associadas ao seu Tenant.";
+    } else if (activeTab === "sales") {
+      title = "Performance de Vendas";
+      description = "Lista detalhada de negócios (Deals), com os seus estágios do funil, valores potenciais e status de fecho.";
+    } else if (activeTab === "inventory") {
+      title = "Movimentações de Estoque";
+      description = "Histórico das entradas, saídas e transferências de produtos nos seus depósitos.";
+    }
+
     return (
-      <div className="flex justify-center items-center h-96">
-        <Loader2 className="animate-spin text-indigo-600 w-10 h-10" />
-      </div>
-    );
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 md:p-8 shadow-sm transition-colors mt-6 animate-in slide-in-from-bottom-2">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{title}</h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-8">{description}</p>
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">
-            Relatórios
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 transition-colors">
-            Métricas baseadas em dados reais do CRM.
-          </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+              <CalendarIcon size={16} /> Data Inicial
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-gray-700 dark:text-white transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+              <CalendarIcon size={16} /> Data Final
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-gray-700 dark:text-white transition-colors"
+            />
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 print:hidden">
+        <div className="border-t border-gray-100 dark:border-gray-700 pt-6 flex flex-col sm:flex-row items-center gap-4">
           <button
-            type="button"
-            onClick={handlePrint}
-            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition shadow-sm"
+            onClick={() => handleDownload("pdf")}
+            disabled={loadingPdf || loadingExcel}
+            className="w-full sm:w-auto px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-70"
           >
-            <Printer size={18} /> Imprimir
+            {loadingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+            Descarregar PDF
           </button>
 
-          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm transition-colors">
-            <button
-              onClick={() => setDateRange("7d")}
-              className={getRangeButtonClass("7d")}
-            >
-              7 Dias
-            </button>
-            <button
-              onClick={() => setDateRange("30d")}
-              className={getRangeButtonClass("30d")}
-            >
-              30 Dias
-            </button>
-            <button
-              onClick={() => setDateRange("3m")}
-              className={getRangeButtonClass("3m")}
-            >
-              3 Meses
-            </button>
-          </div>
+          <button
+            onClick={() => handleDownload("excel")}
+            disabled={loadingPdf || loadingExcel}
+            className="w-full sm:w-auto px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-70"
+          >
+            {loadingExcel ? <Loader2 size={18} className="animate-spin" /> : <FileSpreadsheet size={18} />}
+            Descarregar Excel
+          </button>
         </div>
       </div>
+    );
+  };
 
-      {/* Cards Estatísticos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Total de Leads"
-          value={stats.leads.toString()}
-          change={stats.leads > 0 ? "+" + stats.leads : "0"}
-          icon={Users}
-          trend="up"
-        />
-        <StatCard
-          title="Mensagens (Simulado)"
-          value="0"
-          change="-"
-          icon={MessageCircle}
-          trend="neutral"
-        />
-        <StatCard
-          title="Taxa de Conversão"
-          value={stats.conversion}
-          change="-"
-          icon={TrendingUp}
-          trend="neutral"
-        />
-        <StatCard
-          title="Custo por Lead"
-          value={stats.cost}
-          change="-"
-          icon={BarChart3}
-          trend="neutral"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gráfico de Volume */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-colors">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 transition-colors">
-            Volume de Leads
-          </h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={chartData}
-                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: chartTheme.text, fontSize: 12 }}
-                  dy={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: chartTheme.text, fontSize: 12 }}
-                />
-                <CartesianGrid vertical={false} stroke={chartTheme.grid} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: chartTheme.tooltipBg,
-                    borderColor: chartTheme.tooltipBorder,
-                    color: chartTheme.tooltipText,
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="leads"
-                  stroke="#4f46e5"
-                  fillOpacity={1}
-                  fill="url(#colorLeads)"
-                  name="Novos Leads"
-                  animationDuration={500}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Gráfico de Origem */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-colors">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 transition-colors">
-            Origem dos Leads
-          </h3>
-          <div className="h-80 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={sourceData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={80}
-                  outerRadius={110}
-                  paddingAngle={5}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {sourceData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: chartTheme.tooltipBg,
-                    borderColor: chartTheme.tooltipBorder,
-                    color: chartTheme.tooltipText,
-                  }}
-                />
-                <Legend verticalAlign="bottom" height={36} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">
+          Central de Relatórios
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">
+          Gere e exporte métricas avançadas em PDF ou Excel.
+        </p>
       </div>
 
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-lg p-4 flex items-start gap-3 transition-colors">
-        <AlertCircle
-          className="text-blue-600 dark:text-blue-400 mt-0.5"
-          size={20}
-        />
+        <AlertCircle className="text-blue-600 dark:text-blue-400 mt-0.5" size={20} />
         <div>
-          <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
-            Dados em tempo real
-          </p>
+          <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">Motor Django</p>
           <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
-            Os gráficos acima agora refletem os dados reais cadastrados na aba{" "}
-            <strong>Contatos</strong> e <strong>Funil</strong>.
+            Os ficheiros de exportação são renderizados dinamicamente pelo backend baseados no modelo relacional.
           </p>
         </div>
       </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => setActiveTab("finance")}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === "finance"
+              ? "bg-indigo-600 text-white shadow"
+              : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+        >
+          <CreditCard size={18} /> Financeiro
+        </button>
+        <button
+          onClick={() => setActiveTab("sales")}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === "sales"
+              ? "bg-indigo-600 text-white shadow"
+              : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+        >
+          <BarChart size={18} /> Vendas
+        </button>
+        <button
+          onClick={() => setActiveTab("inventory")}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium rounded-lg transition-colors ${activeTab === "inventory"
+              ? "bg-indigo-600 text-white shadow"
+              : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+        >
+          <Truck size={18} /> Estoque
+        </button>
+      </div>
+
+      {renderTabContent()}
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        showCancel={false}
+      />
     </div>
   );
 };

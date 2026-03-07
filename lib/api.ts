@@ -46,3 +46,32 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
     return res.json();
 }
+
+/**
+ * Função utilitária para fazer requisições à API do Django que retornam ficheiros Binários (PDF, Excel)
+ */
+export async function apiFetchBlob(endpoint: string, options: RequestInit = {}) {
+    if (!auth.currentUser) {
+        throw new Error("Utilizador não autenticado no Firebase.");
+    }
+
+    const token = await auth.currentUser.getIdToken();
+
+    const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        ...options.headers,
+    };
+
+    const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
+    const res = await fetch(url, {
+        ...options,
+        headers,
+    });
+
+    if (!res.ok) {
+        throw new Error(`Erro no Download (${res.status}): ${res.statusText}`);
+    }
+
+    return res.blob();
+}

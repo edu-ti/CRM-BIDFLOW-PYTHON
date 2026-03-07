@@ -36,6 +36,50 @@ services:
       - django_static:/app/static
       - ./django_backend/firebase-key.json:/app/firebase-key.json
 
+  # Celery Worker (Executa as tarefas em background)
+  celery_worker:
+    container_name: bidflow_celery_worker
+    build:
+      context: ./django_backend
+    command: celery -A core worker -l info
+    restart: always
+    environment:
+      - DEBUG=False
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=${DB_NAME:-bidflow_db}
+      - DB_USER=${DB_USER:-bidflow_user}
+      - DB_PASSWORD=${DB_PASSWORD:-bidflow_pass}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - SECRET_KEY=${SECRET_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./django_backend/firebase-key.json:/app/firebase-key.json
+
+  # Celery Beat (Agendador de tarefas recorrentes)
+  celery_beat:
+    container_name: bidflow_celery_beat
+    build:
+      context: ./django_backend
+    command: celery -A core beat -l info
+    restart: always
+    environment:
+      - DEBUG=False
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=${DB_NAME:-bidflow_db}
+      - DB_USER=${DB_USER:-bidflow_user}
+      - DB_PASSWORD=${DB_PASSWORD:-bidflow_pass}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - SECRET_KEY=${SECRET_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
   # Frontend React (Build + Nginx Proxy com SSL)
   frontend:
     container_name: bidflow_frontend

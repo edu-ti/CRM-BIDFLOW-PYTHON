@@ -71,6 +71,11 @@ import Settings from "./pages/client/Settings";
 import Proposals from "./pages/client/Proposals";
 import Catalog from "./pages/client/Catalog";
 import ProposalPrint from "./pages/client/ProposalPrint";
+
+// Finance Pages
+import FinanceDashboard from "./pages/client/finance/FinanceDashboard";
+import TransactionsList from "./pages/client/finance/TransactionsList";
+
 // Inventory Pages
 import MovementsList from "./pages/client/inventory/MovementsList";
 import NewMovement from "./pages/client/inventory/NewMovement";
@@ -336,6 +341,15 @@ const Layout: React.FC<LayoutProps> = ({
     { icon: CalendarIcon, label: "Agenda", to: "/app/calendar" },
     { icon: FileText, label: "Propostas", to: "/app/proposals" },
     { icon: BookOpen, label: "Catálogo", to: "/app/catalog" },
+    // Menu Financeiro
+    {
+      icon: CreditCard,
+      label: "Financeiro",
+      subItems: [
+        { label: "Dashboard", to: "/app/finance/dashboard" },
+        { label: "Lançamentos", to: "/app/finance/transactions" },
+      ]
+    },
     // Menu Estoque Reorganizado
     {
       icon: Package,
@@ -739,7 +753,10 @@ const App = () => {
                   <Route path="proposals" element={<Proposals />} />
                   <Route path="catalog" element={<Catalog />} />
 
-                  {/* Rotas de Estoque */}
+                  {/* Rotas de Financeiro */}
+                  <Route path="finance/dashboard" element={<FinanceDashboard />} />
+                  <Route path="finance/transactions" element={<TransactionsList />} />
+
                   {/* Rotas de Estoque */}
                   <Route path="inventory/movements" element={<MovementsList />} />
                   <Route path="inventory/new-movement" element={<NewMovement />} />

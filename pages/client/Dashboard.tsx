@@ -101,93 +101,32 @@ const Dashboard = () => {
       setLoading(true);
 
       try {
-        const uid = auth.currentUser.uid;
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const startOfLast7Days = new Date();
-        startOfLast7Days.setDate(now.getDate() - 7);
+        const data = await apiFetch('/reports/analytics/sales/');
 
-        // 1. Buscar Contatos (Leads) via Django
-        const contacts = await apiFetch('/crm/contacts/');
-
-        // Filtrar leads deste mês (Django model usa created_at)
-        const newLeads = contacts.filter(
-          (c: any) => new Date(c.created_at) >= startOfMonth
-        ).length;
-
-        // 2. Buscar Negócios (Vendas) via Django
-        const deals = await apiFetch('/crm/deals/');
-
-        // Filtrar vendas ganhas (stage_id 's4' do Funnel.tsx é "Fechado")
-        const wonDeals = deals.filter((d: any) => d.stage_id === "s4");
-        const totalRevenue = wonDeals.reduce(
-          (acc: number, curr: any) => acc + (Number(curr.value) || 0),
-          0
-        );
-
-        // 3. Buscar Conversas (A ser migrado na Fase 3 - Mock para não quebrar UI)
-        const conversations: any[] = [];
-
-        // Simulação de volume de mensagens baseada em conversas ativas (para evitar leitura excessiva de subcoleções)
-        // Em produção, você usaria um contador incrementado via Cloud Functions
-        const activeChats = conversations.filter(
-          (c: any) => new Date(c.lastMessageAt) >= startOfMonth
-        ).length;
-        const estimatedMessages = activeChats * 12; // Média estimada de 12 msgs por conversa ativa
-
-        // Taxa de Resposta (Conversas sem unreadCount > 0)
-        const totalChats = conversations.length;
-        const repliedChats = conversations.filter(
-          (c: any) => c.unreadCount === 0
-        ).length;
-        const responseRate =
-          totalChats > 0 ? Math.round((repliedChats / totalChats) * 100) : 100;
-
+        // 1. Preencher KPIs
         setStats({
-          leads: newLeads,
-          leadsChange:
-            contacts.length > 0
-              ? Math.round((newLeads / contacts.length) * 100)
-              : 0, // % do total
-          messages: estimatedMessages,
-          sales: wonDeals.length,
-          revenue: totalRevenue,
-          responseRate: responseRate,
+          leads: data.leads_trend_6m.length > 0 ? data.leads_trend_6m[data.leads_trend_6m.length - 1].leads : 0,
+          leadsChange: 0, // Poderia ser calculado comparando com o mês anterior
+          messages: 0, // Ainda não integrado
+          sales: data.won_deals,
+          revenue: data.funnel_by_stage && data.funnel_by_stage["s4"] ? data.funnel_by_stage["s4"].value : 0,
+          responseRate: 100, // Fixo para este MVP
         });
 
-        // 4. Montar dados do gráfico (Últimos 7 dias)
-        const days = getLast7Days(); // ["Seg", "Ter", ...]
-        // Inicializar mapa de dados zerado
-        const dataMap = days.map((day) => ({ name: day, leads: 0, vendas: 0 }));
+        // 2. Preencher Gráfico de Evolução (LineChart & BarChart)
+        const formatMonth = (mstr: string) => {
+          const [yyyy, mm] = mstr.split("-");
+          const d = new Date(parseInt(yyyy), parseInt(mm) - 1, 1);
+          return d.toLocaleDateString('pt-BR', { month: 'short' });
+        };
 
-        // Preencher Leads
-        contacts.forEach((c: any) => {
-          const date = new Date(c.created_at);
-          if (date >= startOfLast7Days) {
-            const dayName = date.toLocaleDateString("pt-BR", {
-              weekday: "short",
-            });
-            const dayEntry = dataMap.find((d) => d.name === dayName);
-            if (dayEntry) dayEntry.leads += 1;
-          }
-        });
+        const mappedTrends = data.leads_trend_6m.map((t: any) => ({
+          name: formatMonth(t.month),
+          leads: t.leads,
+          vendas: 0 // Mock por agora num line chart
+        }));
+        setChartData(mappedTrends);
 
-        // Preencher Vendas
-        deals.forEach((d: any) => {
-          if (d.stage_id === "s4") {
-            // Apenas vendas fechadas
-            const date = new Date(d.created_at || new Date()); // Fallback se não tiver data
-            if (date >= startOfLast7Days) {
-              const dayName = date.toLocaleDateString("pt-BR", {
-                weekday: "short",
-              });
-              const dayEntry = dataMap.find((d) => d.name === dayName);
-              if (dayEntry) dayEntry.vendas += 1;
-            }
-          }
-        });
-
-        setChartData(dataMap);
       } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
       } finally {

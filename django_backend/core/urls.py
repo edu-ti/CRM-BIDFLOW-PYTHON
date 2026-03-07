@@ -28,4 +28,6 @@ urlpatterns = [
     path('api/users/', include('users.urls')),
     path('api/', include('communications.urls')),
     path('api/master/', include('saas_master.urls')),
+    path('api/finance/', include('finance.urls')),
+    path('api/reports/', include('reports.urls')),
 ]

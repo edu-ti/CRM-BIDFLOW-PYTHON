@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Check,
   Loader2,
+  CreditCard,
 } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db, auth, appId } from "../../lib/firebase";
@@ -203,43 +204,48 @@ const Settings = () => {
         <div className="w-full md:w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 p-4 space-y-2">
           <button
             onClick={() => setActiveTab("profile")}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${
-              activeTab === "profile"
-                ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-            }`}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${activeTab === "profile"
+              ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
           >
             <User size={18} /> Perfil
           </button>
           <button
             onClick={() => setActiveTab("notifications")}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${
-              activeTab === "notifications"
-                ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-            }`}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${activeTab === "notifications"
+              ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
           >
             <Bell size={18} /> Notificações
           </button>
           <button
             onClick={() => setActiveTab("whatsapp")}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${
-              activeTab === "whatsapp"
-                ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-            }`}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${activeTab === "whatsapp"
+              ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
           >
             <Smartphone size={18} /> Conexão WhatsApp
           </button>
           <button
             onClick={() => setActiveTab("security")}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${
-              activeTab === "security"
-                ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-            }`}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${activeTab === "security"
+              ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
           >
             <Shield size={18} /> Segurança
+          </button>
+          <button
+            onClick={() => setActiveTab("billing")}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition ${activeTab === "billing"
+              ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`}
+          >
+            <CreditCard size={18} /> Assinatura / Plano
           </button>
         </div>
 
@@ -355,11 +361,10 @@ const Settings = () => {
                   id="save-profile-btn"
                   onClick={handleSaveProfile}
                   disabled={loading}
-                  className={`px-6 py-2 rounded-lg flex items-center gap-2 transition font-medium shadow-sm disabled:opacity-70 ${
-                    saveSuccess
-                      ? "bg-green-600 hover:bg-green-700 text-white"
-                      : "bg-indigo-600 hover:bg-indigo-700 text-white"
-                  }`}
+                  className={`px-6 py-2 rounded-lg flex items-center gap-2 transition font-medium shadow-sm disabled:opacity-70 ${saveSuccess
+                    ? "bg-green-600 hover:bg-green-700 text-white"
+                    : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    }`}
                 >
                   {loading ? (
                     <Loader2 size={18} className="animate-spin" />
@@ -541,11 +546,10 @@ const Settings = () => {
               </div>
 
               <div
-                className={`p-4 border rounded-lg flex items-center justify-between dark:bg-blue-700/20 dark:border-gray-700 dark:text-blue-200 ${
-                  twoFactorEnabled
-                    ? "bg-indigo-50 border-indigo-100 text-indigo-800"
-                    : "bg-gray-50 border-gray-200 text-gray-700"
-                }`}
+                className={`p-4 border rounded-lg flex items-center justify-between dark:bg-blue-700/20 dark:border-gray-700 dark:text-blue-200 ${twoFactorEnabled
+                  ? "bg-indigo-50 border-indigo-100 text-indigo-800"
+                  : "bg-gray-50 border-gray-200 text-gray-700"
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Shield
@@ -564,11 +568,10 @@ const Settings = () => {
                 </div>
                 <button
                   onClick={handle2FAToggle}
-                  className={`font-medium text-xs border px-3 py-1.5 rounded shadow-sm transition ${
-                    twoFactorEnabled
-                      ? "text-red-600 border-red-200 bg-white hover:bg-red-50"
-                      : "text-green-600 border-green-200 bg-white hover:bg-green-50"
-                  }`}
+                  className={`font-medium text-xs border px-3 py-1.5 rounded shadow-sm transition ${twoFactorEnabled
+                    ? "text-red-600 border-red-200 bg-white hover:bg-red-50"
+                    : "text-green-600 border-green-200 bg-white hover:bg-green-50"
+                    }`}
                 >
                   {twoFactorEnabled ? "Desativar" : "Ativar"}
                 </button>
@@ -581,11 +584,10 @@ const Settings = () => {
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className={`p-2 rounded-lg transition-colors ${
-                        passwordResetSent
-                          ? "bg-green-100 text-green-600"
-                          : "bg-gray-100 text-gray-600 group-hover:text-indigo-600 group-hover:bg-indigo-50"
-                      }`}
+                      className={`p-2 rounded-lg transition-colors ${passwordResetSent
+                        ? "bg-green-100 text-green-600"
+                        : "bg-gray-100 text-gray-600 group-hover:text-indigo-600 group-hover:bg-indigo-50"
+                        }`}
                     >
                       {passwordResetSent ? (
                         <Check size={20} />
@@ -595,11 +597,10 @@ const Settings = () => {
                     </div>
                     <div className="text-left dark:text-white">
                       <h4
-                        className={`font-medium ${
-                          passwordResetSent
-                            ? "text-green-600"
-                            : "text-indigo-600"
-                        }`}
+                        className={`font-medium ${passwordResetSent
+                          ? "text-green-600"
+                          : "text-indigo-600"
+                          }`}
                       >
                         {passwordResetSent
                           ? "Email de recuperação enviado!"
@@ -623,9 +624,8 @@ const Settings = () => {
                 <div>
                   <button
                     onClick={handleDeviceToggle}
-                    className={`flex items-center justify-between w-full p-4 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 dark:bg-blue-700/20 dark:border-gray-700 dark:text-white transition group ${
-                      showDevices ? "rounded-b-none border-b-0" : ""
-                    }`}
+                    className={`flex items-center justify-between w-full p-4 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 dark:bg-blue-700/20 dark:border-gray-700 dark:text-white transition group ${showDevices ? "rounded-b-none border-b-0" : ""
+                      }`}
                   >
                     <div className="flex items-center  gap-3">
                       <div className="p-2 bg-gray-100 rounded-lg text-gray-600 group-hover:text-indigo-600 group-hover:bg-indigo-50 transition-colors">
@@ -642,9 +642,8 @@ const Settings = () => {
                     </div>
                     <ChevronRight
                       size={18}
-                      className={`text-gray-400 group-hover:text-indigo-600 transition-transform ${
-                        showDevices ? "rotate-90" : ""
-                      }`}
+                      className={`text-gray-400 group-hover:text-indigo-600 transition-transform ${showDevices ? "rotate-90" : ""
+                        }`}
                     />
                   </button>
 
@@ -685,6 +684,89 @@ const Settings = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "billing" && (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white">
+                  Assinatura e Faturamento
+                </h2>
+                <p className="text-gray-500 text-sm dark:text-gray-100/50">
+                  Faça o upgrade do seu plano ou atualize a sua forma de pagamento.
+                </p>
+              </div>
+
+              <div className="bg-indigo-50 border border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div>
+                  <h3 className="text-lg font-bold text-indigo-900 dark:text-indigo-100 mb-1">
+                    Plano Atual: <span className="uppercase text-indigo-600 dark:text-indigo-400">BidFlow Essencial</span>
+                  </h3>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="flex items-center gap-1 text-sm font-medium text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 rounded-full">
+                      <Check size={14} /> Ativo
+                    </span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      Válido até 25/11/2026
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right flex flex-col items-center md:items-end gap-2">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">ID Cliente Stripe:</span>
+                  <code className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">
+                    cus_RSxxxxxxxxxx
+                  </code>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-6">
+                <h3 className="font-semibold text-gray-800 dark:text-white mb-4">
+                  Gerir Assinatura no Stripe
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                  Ao clicar abaixo, será redirecionado para o portal seguro do Stripe para:
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Alterar o meio de pagamento (Cartões, etc)</li>
+                    <li>Baixar faturas e recibos</li>
+                    <li>Fazer Upgrade de Plano ou Cancelar a assinatura</li>
+                  </ul>
+                </p>
+
+                <button
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      // Note: Assuming apiFetch creates backend URLs
+                      // For this implementation, we simulate moving to the checkout
+                      // const result = await apiFetch("/master/checkout/", { method: "POST", body: { plan_id: "example" } });
+                      // if (result.url) { window.location.href = result.url; }
+
+                      setTimeout(() => {
+                        showAlert(
+                          "Redirecionando",
+                          "Simulando redirecionamento para o Stripe Checkout (API backend construída na Fase 16).",
+                          "info"
+                        );
+                        setLoading(false);
+                      }, 1000);
+                    } catch (error) {
+                      setLoading(false);
+                      showAlert("Erro", "Falha ao gerar o link de pagamento.", "error");
+                    }
+                  }}
+                  className="px-6 py-3 bg-gray-900 hover:bg-gray-800 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shadow flex items-center gap-2 w-full md:w-auto justify-center"
+                >
+                  {loading ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <CreditCard size={18} />
+                  )}
+                  Abrir Portal de Pagamento
+                </button>
               </div>
             </div>
           )}
