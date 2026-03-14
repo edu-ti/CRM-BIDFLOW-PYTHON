@@ -3,7 +3,7 @@ import datetime
 from django.http import HttpResponse, FileResponse
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from core.authentication import FirebaseAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from finance.models import Transaction
 from crm.models import Deal
 from inventory.models import StockMovement
@@ -12,7 +12,7 @@ from reportlab.lib.pagesizes import letter
 import openpyxl
 
 class BaseReportView(APIView):
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_date_range(self, request):

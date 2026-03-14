@@ -29,7 +29,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:-bidflow_pass}
       - DB_HOST=db
       - DB_PORT=5432
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-bidflow-default-key-12345}
     depends_on:
       - db
     volumes:
@@ -51,7 +51,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:-bidflow_pass}
       - DB_HOST=db
       - DB_PORT=5432
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-bidflow-default-key-12345}
       - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       - db
@@ -74,7 +74,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:-bidflow_pass}
       - DB_HOST=db
       - DB_PORT=5432
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-bidflow-default-key-12345}
       - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       - db

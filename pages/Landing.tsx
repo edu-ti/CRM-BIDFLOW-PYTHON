@@ -15,7 +15,11 @@ const Landing: React.FC = () => {
       {/* Conteúdo central */}
       <div className="relative z-10 flex flex-col items-center justify-center flex-1 px-4">
         <h1 className="text-3xl md:text-4xl font-semibold mb-2 text-center">
-          FR Produtos Médicos
+          <img
+            src="/assets/logo-1200-fp.png"
+            alt="Logo"
+            className="w-16 h-16"
+          />
         </h1>
         <p className="text-sm md:text-base mb-8 uppercase tracking-[0.25em] text-center">
           Escolha um login
@@ -58,7 +62,7 @@ const Landing: React.FC = () => {
       {/* Rodapé com redes sociais */}
       <footer className="relative z-10 flex justify-center gap-6 py-6 text-xl">
         <a
-          href="https://www.instagram.com/frprodutosmedicospe/"
+          href="https://www.instagram.com/bidflow.crm/"
           className="hover:text-gray-300"
         >
           <img
@@ -68,7 +72,7 @@ const Landing: React.FC = () => {
           />
         </a>
         <a
-          href="https://www.facebook.com/frprodutosmedicos/"
+          href="https://www.facebook.com/BidFlow.crm/"
           className="hover:text-gray-300"
         >
           <img src="/assets/icon-face.png" alt="facebook" className="w-8 h-8" />

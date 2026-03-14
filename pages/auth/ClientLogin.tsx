@@ -1,8 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Mail, Lock, Loader2, AlertCircle } from "lucide-react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../../lib/firebase";
 
 const ClientLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -17,21 +15,30 @@ const ClientLogin: React.FC = () => {
     setError("");
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // App.tsx handles redirection
+      const response = await fetch("https://crm.bidflow.top/api/token/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username: email, password }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error("Email ou senha incorretos.");
+        }
+        throw new Error("Ocorreu um erro ao fazer login.");
+      }
+
+      const data = await response.json();
+      localStorage.setItem("access_token", data.access);
+      localStorage.setItem("refresh_token", data.refresh);
+
+      // Forces a page reload to let App.tsx or Context catch the new token
+      window.location.href = "/";
     } catch (err: any) {
       console.error("Erro no login:", err);
-      if (
-        err.code === "auth/invalid-credential" ||
-        err.code === "auth/user-not-found" ||
-        err.code === "auth/wrong-password"
-      ) {
-        setError("Email ou senha incorretos.");
-      } else if (err.code === "auth/too-many-requests") {
-        setError("Muitas tentativas. Tente novamente mais tarde.");
-      } else {
-        setError("Ocorreu um erro ao fazer login.");
-      }
+      setError(err.message || "Ocorreu um erro ao fazer login.");
       setLoading(false);
     }
   };
@@ -48,14 +55,14 @@ const ClientLogin: React.FC = () => {
 
         <div className="text-center mb-8">
           <img
-            src="/assets/LOGO-FR.webp"
-            alt="FR Produtos Médicos"
+            src="/assets/logo-1200-fb.png"
+            alt="BidFlow"
             className="h-16 mx-auto mb-4 object-contain"
           />
           <h1 className="text-2xl font-bold text-gray-900">
             Bem-vindo de volta
           </h1>
-          <p className="text-gray-500 mt-1">Acesse sua conta FR</p>
+          <p className="text-gray-500 mt-1">Acesse sua conta BidFlow</p>
         </div>
 
         {error && (

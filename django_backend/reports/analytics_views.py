@@ -5,7 +5,7 @@ from django.db.models.functions import TruncMonth, Coalesce
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from core.authentication import FirebaseAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from crm.models import Deal, Contact
 from finance.models import Transaction, TransactionCategory
@@ -14,7 +14,7 @@ class SalesAnalyticsView(APIView):
     """
     Endpoint para alimentar o Dashboard de Vendas (CRM).
     """
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -67,7 +67,7 @@ class FinanceAnalyticsView(APIView):
     """
     Endpoint para alimentar o Dashboard Financeiro.
     """
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):

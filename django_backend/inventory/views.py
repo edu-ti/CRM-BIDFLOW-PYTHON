@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from core.authentication import FirebaseAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import (
     ProductCategory, Brand, Depot, Unit, Size, 
@@ -19,7 +19,7 @@ class BaseInventoryViewSet(viewsets.ModelViewSet):
     2. Querysets are filtered by the logged-in user.
     3. The user is automatically set on creation.
     """
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):

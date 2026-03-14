@@ -1,27 +1,23 @@
-import { auth } from './firebase'; // Ajusta dependendo de onde está o teu firebase.ts
-
-const API_BASE_URL = 'http://localhost:8000/api';
+// Mudamos para o seu domínio real
+const API_BASE_URL = 'https://crm.bidflow.top/api';
 
 /**
  * Função utilitária para fazer requisições à API do Django
- * Garante que o Token JWT do Firebase é injetado no cabeçalho Authorization
  */
 export async function apiFetch(endpoint: string, options: RequestInit = {}) {
-    // Garante que o utilizado está logado e injeta o token
-    if (!auth.currentUser) {
-        throw new Error("Utilizador não autenticado no Firebase.");
-    }
+    // Pega o token diretamente do localStorage para a autenticação Django JWT
+    const token = localStorage.getItem('access_token') || '';
 
-    const token = await auth.currentUser.getIdToken();
-
-    // Configura os cabeçalhos por omissão
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
         ...options.headers,
     };
 
-    // Formata o URL final
+    // Só adiciona o cabeçalho se houver um token
+    if (token) {
+        (headers as any)['Authorization'] = `Bearer ${token}`;
+    }
+
     const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
     const res = await fetch(url, {
@@ -39,7 +35,6 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
         throw new Error(`Erro na API (${res.status}): ${JSON.stringify(errorData)}`);
     }
 
-    // Algumas chamadas como DELETE não devolvem JSON
     if (res.status === 204) {
         return null;
     }
@@ -47,20 +42,17 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
     return res.json();
 }
 
-/**
- * Função utilitária para fazer requisições à API do Django que retornam ficheiros Binários (PDF, Excel)
- */
 export async function apiFetchBlob(endpoint: string, options: RequestInit = {}) {
-    if (!auth.currentUser) {
-        throw new Error("Utilizador não autenticado no Firebase.");
-    }
-
-    const token = await auth.currentUser.getIdToken();
+    // Pega o token diretamente do localStorage para a autenticação Django JWT
+    const token = localStorage.getItem('access_token') || '';
 
     const headers: HeadersInit = {
-        'Authorization': `Bearer ${token}`,
         ...options.headers,
     };
+
+    if (token) {
+        (headers as any)['Authorization'] = `Bearer ${token}`;
+    }
 
     const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 

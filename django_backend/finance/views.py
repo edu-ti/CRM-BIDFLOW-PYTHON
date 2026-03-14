@@ -1,11 +1,11 @@
 from rest_framework import viewsets, permissions
 from .models import BankAccount, TransactionCategory, Transaction
 from .serializers import BankAccountSerializer, TransactionCategorySerializer, TransactionSerializer
-from core.authentication import FirebaseAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 class BankAccountViewSet(viewsets.ModelViewSet):
     serializer_class = BankAccountSerializer
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -14,7 +14,7 @@ class BankAccountViewSet(viewsets.ModelViewSet):
 
 class TransactionCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionCategorySerializer
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -23,7 +23,7 @@ class TransactionCategoryViewSet(viewsets.ModelViewSet):
 
 class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):

@@ -1,5 +1,5 @@
 from rest_framework import viewsets, permissions
-from core.authentication import FirebaseAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import Event, Campaign, ChatbotFlow
 from .serializers import EventSerializer, CampaignSerializer, ChatbotFlowSerializer
 

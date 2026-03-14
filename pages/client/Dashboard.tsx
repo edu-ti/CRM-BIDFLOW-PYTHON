@@ -149,16 +149,16 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Dashboard
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400">
-            Visão geral da sua operação em tempo real.
-          </p>
-        </div>
-        <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition shadow-sm">
-          Atualizar Dados
-        </button>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Painel de Controle
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400">
+          Visão geral da sua operação em tempo real.
+        </p>
+      </div>
+      <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition shadow-sm">
+        Atualizar Indicadores
+      </button>
       </div>
       {mensagemDjango && (
         <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">

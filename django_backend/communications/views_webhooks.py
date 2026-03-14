@@ -8,7 +8,7 @@ from rest_framework import status
 from .models import Message
 from saas_master.models import Instance
 from crm.models import Contact
-from core.authentication import FirebaseAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from .whatsapp_service import send_text_message
 from .tasks import process_chatbot_step
 
@@ -105,7 +105,7 @@ class WhatsAppWebhookView(APIView):
 
 
 class SendMessageView(APIView):
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

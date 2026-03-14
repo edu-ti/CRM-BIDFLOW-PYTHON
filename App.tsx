@@ -42,14 +42,6 @@ import {
   ChevronRight,
   Package, // Ícone para Estoque
 } from "lucide-react";
-import {
-  onAuthStateChanged,
-  signInAnonymously,
-  signInWithCustomToken,
-  signOut,
-  User as FirebaseUser,
-} from "firebase/auth";
-import { auth, initialAuthToken, appId } from "./lib/firebase";
 import { apiFetch } from "./lib/api";
 
 // Public Pages
@@ -331,7 +323,7 @@ const Layout: React.FC<LayoutProps> = ({
   }
 
   const clientLinks: SidebarLinkItem[] = [
-    { icon: LayoutDashboard, label: "Dashboard", to: "/app/dashboard" },
+    { icon: LayoutDashboard, label: "Painel", to: "/app/dashboard" },
     { icon: MessageSquare, label: "Conversas", to: "/app/conversations" },
     { icon: Users, label: "Clientes", to: "/app/contacts" },
     { icon: Filter, label: "Funil de Vendas", to: "/app/funnel" },
@@ -346,7 +338,7 @@ const Layout: React.FC<LayoutProps> = ({
       icon: CreditCard,
       label: "Financeiro",
       subItems: [
-        { label: "Dashboard", to: "/app/finance/dashboard" },
+        { label: "Visão Geral", to: "/app/finance/dashboard" },
         { label: "Lançamentos", to: "/app/finance/transactions" },
       ]
     },
@@ -429,10 +421,10 @@ const Layout: React.FC<LayoutProps> = ({
   ];
 
   const adminLinksRaw = [
-    { icon: LayoutDashboard, label: "Dashboard Master", path: "/admin/dashboard", req: "any" },
+    { icon: LayoutDashboard, label: "Painel Master", path: "/admin/dashboard", req: "any" },
     { icon: Building2, label: "Clientes (Empresas)", path: "/admin/companies", req: "sales" },
     { icon: Shield, label: "Planos", path: "/admin/plans", req: "finance" },
-    { icon: CreditCard, label: "Financeiro", path: "/admin/finance", req: "finance" },
+    { icon: CreditCard, label: "Gestão Financeira", path: "/admin/finance", req: "finance" },
     { icon: Server, label: "Instâncias", path: "/admin/instances", req: "tech" },
     { icon: Plug, label: "Integrações", path: "/admin/integrations", req: "tech" },
     { icon: Box, label: "Módulos", path: "/admin/modules", req: "sales" },
@@ -441,6 +433,7 @@ const Layout: React.FC<LayoutProps> = ({
     { icon: LifeBuoy, label: "Suporte", path: "/admin/support", req: "support" },
     { icon: ScrollText, label: "Logs", path: "/admin/logs", req: "tech" },
     { icon: Globe, label: "Configurações", path: "/admin/settings", req: "tech" },
+    { icon: LayoutDashboard, label: "Painel do Cliente", path: "/app/dashboard", req: "any" },
   ];
 
   const adminLinks =
@@ -592,7 +585,7 @@ const Layout: React.FC<LayoutProps> = ({
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="p-2 text-gray-600 dark:text-gray-300"
           >
-            Menu
+            Menu Principal
           </button>
         </header>
         <div className="flex-1 overflow-auto p-4 md:p-8 bg-gray-50/50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -610,72 +603,52 @@ const App = () => {
     useState<AdminPermissions>(defaultPermissions);
 
   useEffect(() => {
-    const initAuth = async () => {
-      if (initialAuthToken) {
-        await signInWithCustomToken(auth, initialAuthToken);
-      } else {
-        await signInAnonymously(auth);
-      }
-    };
-    initAuth();
-
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        try {
-          if (currentUser.isAnonymous) {
-            setRole("GUEST");
-            setUserProfile({
-              name: "Visitante",
-              email: "guest@bidflow.com",
-              avatar: "https://ui-avatars.com/api/?name=Guest",
-            });
-            return;
-          }
-
-          // Consulta o backend Django para obter o UserProfile com Role e Permissions
-          try {
-            // O próprio token JWT é enviado e a API sabe quem é o utilizador.
-            const userData = await apiFetch('/users/me/');
-
-            setAdminPermissions({
-              superadmin: userData.permissions.superadmin,
-              finance: userData.permissions.finance,
-              support: userData.permissions.support,
-              tech: userData.permissions.tech,
-              sales: userData.permissions.sales,
-            });
-
-            setUserProfile({
-              name: currentUser.displayName || userData.user.first_name || userData.user.email.split("@")[0] || "Usuário",
-              email: userData.user.email,
-              avatar: currentUser.photoURL || `https://ui-avatars.com/api/?name=${userData.user.email}&background=6C63FF&color=fff`,
-            });
-
-            if (userData.role === "superadmin" || userData.permissions.superadmin) {
-              setRole("SUPERADMIN");
-            } else {
-              setRole("CLIENT");
-            }
-          } catch (apiError) {
-            console.error("Erro ao obter dados do utilizador via API:", apiError);
-            // Caso a API falhe, não conseguimos determinar se é admin. Retornar guest.
-            setRole("GUEST");
-          }
-        } catch (error) {
-          console.error("Erro ao verificar role:", error);
-          setRole("GUEST");
-        }
-      } else {
+    const checkAuth = async () => {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
         setRole("GUEST");
         setUserProfile(null);
+        return;
       }
-    });
 
-    return () => unsubscribe();
+      // Consulta o backend Django para obter o UserProfile com Role e Permissions
+      try {
+        const userData = await apiFetch('/users/me/');
+
+        setAdminPermissions({
+          superadmin: userData.permissions.superadmin,
+          finance: userData.permissions.finance,
+          support: userData.permissions.support,
+          tech: userData.permissions.tech,
+          sales: userData.permissions.sales,
+        });
+
+        setUserProfile({
+          name: userData.user.first_name || userData.user.email.split("@")[0] || "Usuário",
+          email: userData.user.email,
+          avatar: `https://ui-avatars.com/api/?name=${userData.user.email}&background=6C63FF&color=fff`,
+        });
+
+        if (userData.role === "superadmin" || userData.permissions.superadmin) {
+          setRole("SUPERADMIN");
+        } else {
+          setRole("CLIENT");
+        }
+      } catch (apiError) {
+        console.error("Erro ao obter dados do utilizador via API:", apiError);
+        // Token inválido ou expirado
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        setRole("GUEST");
+      }
+    };
+
+    checkAuth();
   }, []);
 
-  const handleLogout = async () => {
-    await signOut(auth);
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     setRole("GUEST");
     setUserProfile(null);
     setAdminPermissions(defaultPermissions);
@@ -735,7 +708,7 @@ const App = () => {
         <Route
           path="/app/*"
           element={
-            role === "CLIENT" ? (
+            role === "CLIENT" || role === "SUPERADMIN" ? (
               <Layout
                 type="client"
                 onLogout={handleLogout}

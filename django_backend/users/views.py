@@ -46,10 +46,10 @@ class CurrentUserView(APIView):
             },
             'permissions': {
                 'superadmin': profile.role == 'superadmin',
-                'finance': profile.finance,
-                'support': profile.support,
-                'tech': profile.tech,
-                'sales': profile.sales
+                'finance': profile.role == 'superadmin' or profile.finance,
+                'support': profile.role == 'superadmin' or profile.support,
+                'tech': profile.role == 'superadmin' or profile.tech,
+                'sales': profile.role == 'superadmin' or profile.sales
             }
         })
 

@@ -3,11 +3,12 @@ from django.urls import path, include
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .authentication import FirebaseAuthentication
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
-# Uma view protegida usando o FirebaseAuthentication do DRF
+# Uma view protegida usando o JWTAuthentication do DRF
 @api_view(['GET'])
-@authentication_classes([FirebaseAuthentication])
+@authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def teste_api(request):
     # 'request.user' terá o utilizador gerado pela nossa classe, e 'request.auth' o dicionário com o token
@@ -22,6 +23,8 @@ def teste_api(request):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/teste/', teste_api),
     path('api/crm/', include('crm.urls')),
     path('api/inventory/', include('inventory.urls')),

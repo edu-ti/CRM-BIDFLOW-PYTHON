@@ -8,8 +8,6 @@ import {
   KeyRound,
   AlertCircle,
 } from "lucide-react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../../lib/firebase";
 
 const AdminLogin: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -24,19 +22,30 @@ const AdminLogin: React.FC = () => {
     setError("");
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // App.tsx handles redirection
+      const response = await fetch("https://crm.bidflow.top/api/token/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username: email, password }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error("Credenciais inválidas.");
+        }
+        throw new Error("Erro de autenticação. Tente novamente.");
+      }
+
+      const data = await response.json();
+      localStorage.setItem("access_token", data.access);
+      localStorage.setItem("refresh_token", data.refresh);
+
+      // Forces a page reload to let App.tsx or Context catch the new token
+      window.location.href = "/";
     } catch (err: any) {
       console.error("Erro no login admin:", err);
-      if (
-        err.code === "auth/invalid-credential" ||
-        err.code === "auth/user-not-found" ||
-        err.code === "auth/wrong-password"
-      ) {
-        setError("Credenciais inválidas.");
-      } else {
-        setError("Erro de autenticação. Tente novamente.");
-      }
+      setError(err.message || "Erro de autenticação. Tente novamente.");
       setLoading(false);
     }
   };
@@ -54,14 +63,14 @@ const AdminLogin: React.FC = () => {
         <div className="text-center mb-8">
           <div className="bg-green/10 p-4 rounded-xl mb-4 inline-block">
             <img
-              src="/assets/LOGO-FR.webp"
-              alt="FR Produtos Médicos"
+              src="/assets/logo-1200-fp.png"
+              alt="BidFlow"
               className="h-16 mx-auto mb-4 object-contain"
             />
           </div>
           <h1 className="text-2xl font-bold text-white">Acesso Master</h1>
           <p className="text-gray-400 mt-1">
-            Área restrita para equipe FR
+            Área restrita para equipe BidFlow
           </p>
         </div>
 
@@ -85,7 +94,7 @@ const AdminLogin: React.FC = () => {
                 type="text"
                 required
                 className="w-full pl-10 pr-4 py-3 bg-[#374151] border border-gray-600 rounded-xl text-white focus:ring-2 focus:ring-[#6C63FF] focus:border-transparent outline-none transition placeholder-gray-500"
-                placeholder="admin@bidflow.com"
+                placeholder="admin@bidflow.com.br"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />

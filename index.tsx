@@ -10,8 +10,11 @@ if (SENTRY_DSN) {
   Sentry.init({
     dsn: SENTRY_DSN,
     integrations: [
-      new Sentry.BrowserTracing(),
-      new Sentry.Replay(),
+      Sentry.browserTracingIntegration(),
+      Sentry.replayIntegration({
+        maskAllText: false,
+        blockAllMedia: false,
+      }),
     ],
     // Performance Monitoring
     tracesSampleRate: 1.0,

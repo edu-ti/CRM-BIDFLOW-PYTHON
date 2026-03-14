@@ -1,5 +1,5 @@
 from rest_framework import viewsets
-from core.authentication import FirebaseAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from .permissions import IsSuperAdmin
 from .models import Company, Plan, Instance, FinanceRecord
 from .serializers import CompanySerializer, PlanSerializer, InstanceSerializer, FinanceRecordSerializer
@@ -7,20 +7,38 @@ from .serializers import CompanySerializer, PlanSerializer, InstanceSerializer, 
 class MasterCompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all()
     serializer_class = CompanySerializer
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
+
+    def initial(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"INITIAL: user={request.user}, path={request.path}")
+        super().initial(request, *args, **kwargs)
 
 class MasterPlanViewSet(viewsets.ModelViewSet):
     queryset = Plan.objects.all()
     serializer_class = PlanSerializer
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
+
+    def initial(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"INITIAL: user={request.user}, path={request.path}")
+        super().initial(request, *args, **kwargs)
 
 class MasterInstanceViewSet(viewsets.ModelViewSet):
     queryset = Instance.objects.all()
     serializer_class = InstanceSerializer
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
+
+    def initial(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"INITIAL: user={request.user}, path={request.path}")
+        super().initial(request, *args, **kwargs)
 
     def get_queryset(self):
         company_id = self.request.query_params.get('company_id')
@@ -31,8 +49,14 @@ class MasterInstanceViewSet(viewsets.ModelViewSet):
 class MasterFinanceViewSet(viewsets.ModelViewSet):
     queryset = FinanceRecord.objects.all()
     serializer_class = FinanceRecordSerializer
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
+
+    def initial(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"INITIAL: user={request.user}, path={request.path}")
+        super().initial(request, *args, **kwargs)
     
     def get_queryset(self):
         # Allow filtering by company in query params
@@ -52,7 +76,7 @@ from django.utils.decorators import method_decorator
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class CreateStripeCheckoutSessionView(APIView):
-    authentication_classes = [FirebaseAuthentication]
+    authentication_classes = [JWTAuthentication]
     # In a real scenario, permission could be IsAuthenticated, but we check if the user belongs to a company
     
     def post(self, request):
